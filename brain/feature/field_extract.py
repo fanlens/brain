@@ -21,3 +21,6 @@ class FieldExtractTransformer(TransformerMixin):
 
     def get_params(self, deep=False):
         return dict(key=self._key)
+
+    def set_params(self, **params):
+        self._key = params.get('key', self._key)

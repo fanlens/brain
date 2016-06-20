@@ -24,8 +24,9 @@ from brain.feature.dense import DenseTransformer
 from brain.feature.field_extract import FieldExtractTransformer
 from brain.feature.fingerprint import DenseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
+from brain.feature.emoji import EmojiTransformer
 from config.env import Environment
-from db import DB, compiled_str, insert_or_update, insert_or_ignore
+from db import DB, insert_or_update
 from db.models.facebook import FacebookCommentEntry
 from db.models.tags import TagSet, UserToTagSet, UserToTagToComment
 from db.models.brain import Model
@@ -81,6 +82,13 @@ class TaggerFactory(object):
                             SelectKBest(chi2),
                             DenseTransformer(),
                         )),
+                        ('emoji', make_pipeline(
+                            EmojiTransformer(output_type=list),
+                            FeatureHasher(input_type='string', non_negative=True),
+                            TfidfTransformer(use_idf=True, smooth_idf=True),
+                            SelectKBest(chi2),
+                            DenseTransformer(),
+                        )),
                     ])),
                 ])),
                 ('fingerprint', make_pipeline(
@@ -96,6 +104,7 @@ class TaggerFactory(object):
     parameters_space = {
         'features__message__features__tokens__lemmatokentransformer__short_url': [True, False],
         'features__message__features__tokens__selectkbest__k': scipy.stats.randint(1, 64),
+        'features__message__features__emoji__selectkbest__k': scipy.stats.randint(1, 64),
         'features__fingerprint__randomizedpca__n_components': scipy.stats.randint(1, 5),
         'clf__max_iter': scipy.stats.randint(30, 160),
         'clf__gamma': scipy.stats.expon(scale=20),
@@ -224,7 +233,7 @@ class TaggerFactory(object):
         folds = list(self._seeded_train_test_split(limit_train=-1))
         logging.debug("Searching optimal parameters")
         logging.debug("=======================================")
-        gs_clf = RandomizedSearchCV(self.taggger_pipeline(), self.parameters_space, n_jobs=-1, verbose=3, n_iter=1,
+        gs_clf = RandomizedSearchCV(self.taggger_pipeline(), self.parameters_space, n_jobs=-1, verbose=3, n_iter=20,
                                     cv=folds)
         gs_clf.fit(self._xs, self._ys)
         logging.debug("Score %s can be reached using %s" % (gs_clf.best_score_, gs_clf.best_params_))

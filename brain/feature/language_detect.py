@@ -31,3 +31,6 @@ class LanguageTransformer(TransformerMixin):
 
     def get_params(self, deep=False):
         return {}
+
+    def set_params(self, **_):
+        pass
