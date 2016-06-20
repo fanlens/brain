@@ -17,12 +17,17 @@ def get_fingerprint(text):
     return retina.getFingerprintForText(text)
 
 
-class FingerprintTransformer(TransformerMixin):
-    # todo inefficient! use batching
-    _vecfun = numpy.vectorize(get_fingerprint)
+def unpack_fingerprint(sample):
+    sample_1d = numpy.zeros(128 * 128, dtype='u1')
+    sample_1d[numpy.array(sample, dtype='u4')] = 1
+    return sample_1d
+
+
+class DenseFingerprintTransformer(TransformerMixin):
+    _vecfun = numpy.vectorize(unpack_fingerprint)
 
     def transform(self, X: numpy.array, y=None, **transform_params):
-        return self._vecfun(X)
+        return numpy.array([unpack_fingerprint(x) for x in X], dtype='u1')
 
     def fit(self, X: numpy.array, y=None, **fit_params):
         return self

@@ -4,7 +4,7 @@
 
 import functools
 import re
-import numpy
+import typing
 from sklearn.base import TransformerMixin
 from nltk import WordNetLemmatizer, pos_tag, word_tokenize
 from nltk.corpus import stopwords
@@ -24,19 +24,23 @@ class LemmaTokenTransformer(TransformerMixin):
     _stops = set(stopwords.words('english'))
     _wnl = WordNetLemmatizer()
 
-    def __init__(self, short_url=False, output_type='string'):
+    def __init__(self, pass_through=False, short_url=False, output_type='string'):
         self._short_url = short_url
         self._output_type = output_type
+        self._pass_through = pass_through
 
-    def transform(self, X: numpy.array, y=None, **transform_params):
-        vecfun = numpy.vectorize(self.__call__)
-        return vecfun(X)
+    def transform(self, X: typing.List[typing.AnyStr], y=None, **transform_params):
+        return map(self.__call__, X)
 
-    def fit(self, X: numpy.array, y=None, **fit_params):
+    def fit(self, X, y=None, **fit_params):
         return self
 
     def get_params(self, deep=False):
-        return dict(extractor=self._ident, short_url=self._short_url, output_type=self._output_type)
+        return dict(short_url=self._short_url, output_type=self._output_type)
+
+    def set_params(self, **params):
+        self._short_url = params.get('short_url', self._short_url)
+        self._output_type = params.get('output_type', self._output_type)
 
     def _lemmatize(self, tokens: list) -> list:
         return [self._wnl.lemmatize(w).lower() for w, t in tokens if t[:2] in ('NN', 'VB', 'JJ', 'RB') or True]
@@ -50,16 +54,19 @@ class LemmaTokenTransformer(TransformerMixin):
             urls = [main for _, main, _ in urls]
         else:
             urls = ['%s://%s%s' % parts for parts in urls]
-        tokenized = compose(
-            functools.partial(self._urls_reg.sub, ' '),
-            word_tokenize,
-            functools.partial(filter, self._word_reg.match),
-            self._stop,
-            pos_tag,
-            self._lemmatize,
-            self._stop,  # lets do it before and after for good measure
-            lambda res: res + urls
-        )(doc)
+        if self._pass_through:
+            tokenized = doc.split(' ')
+        else:
+            tokenized = compose(
+                functools.partial(self._urls_reg.sub, ' '),
+                word_tokenize,
+                functools.partial(filter, self._word_reg.match),
+                self._stop,
+                pos_tag,
+                self._lemmatize,
+                self._stop,  # lets do it before and after for good measure
+                lambda res: res + urls
+            )(doc)
         if self._output_type == 'string':
             return ' '.join(tokenized)
         else:
