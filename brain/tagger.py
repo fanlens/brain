@@ -84,7 +84,7 @@ class TaggerFactory(object):
                             SelectKBest(chi2),
                             DenseTransformer(),
                         )),
-                        ('emoji', make_pipeline(
+                        ('emoji', make_pipeline(  # todo proper evaluation of feature, seemed to make quite a difference
                             EmojiTransformer(output_type=list),
                             FeatureHasher(input_type='string', non_negative=True),
                             # why tfidf?
@@ -92,7 +92,7 @@ class TaggerFactory(object):
                             SelectKBest(chi2),
                             DenseTransformer(),
                         )),
-                        ('punctuation', make_pipeline(
+                        ('punctuation', make_pipeline(  # todo proper evaluation of feature
                             PunctuationTransformer(strict=False, output_type=list),
                             FeatureHasher(input_type='string', non_negative=True),
                             # why tfidf?
@@ -106,7 +106,7 @@ class TaggerFactory(object):
                     FieldExtractTransformer(key=1),
                     DenseFingerprintTransformer(),
                     RandomizedPCA())),
-                ('timeofday', make_pipeline(
+                ('timeofday', make_pipeline(  # todo proper evaluation of feature
                     FieldExtractTransformer(key=2),
                     TimeOfDayTransformer(resolution=3, dense=True))),
             ])),
