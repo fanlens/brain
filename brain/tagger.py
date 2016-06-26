@@ -25,6 +25,7 @@ from brain.feature.field_extract import FieldExtractTransformer
 from brain.feature.fingerprint import DenseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
 from brain.feature.emoji import EmojiTransformer
+from brain.feature.punctuation import PunctuationTransformer
 from config.env import Environment
 from db import DB, insert_or_update
 from db.models.facebook import FacebookCommentEntry
@@ -89,6 +90,12 @@ class TaggerFactory(object):
                             SelectKBest(chi2),
                             DenseTransformer(),
                         )),
+                        ('punctuation', make_pipeline(
+                            PunctuationTransformer(strict=False, output_type=list),
+                            FeatureHasher(input_type='string', non_negative=True),
+                            SelectKBest(chi2),
+                            DenseTransformer(),
+                        )),
                     ])),
                 ])),
                 ('fingerprint', make_pipeline(
@@ -105,6 +112,8 @@ class TaggerFactory(object):
         'features__message__features__tokens__lemmatokentransformer__short_url': [True, False],
         'features__message__features__tokens__selectkbest__k': scipy.stats.randint(1, 64),
         'features__message__features__emoji__selectkbest__k': scipy.stats.randint(1, 64),
+        'features__message__features__punctuation__punctuationtransformer__strict': [True, False],
+        'features__message__features__punctuation__selectkbest__k': scipy.stats.randint(1, 64),
         'features__fingerprint__randomizedpca__n_components': scipy.stats.randint(1, 5),
         'clf__max_iter': scipy.stats.randint(30, 160),
         'clf__gamma': scipy.stats.expon(scale=20),
