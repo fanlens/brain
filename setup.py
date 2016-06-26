@@ -19,5 +19,6 @@ setup(
         'numpy',
         'scipy',
         'scikit-learn',
+        'python-dateutil'
     ],
 )

@@ -26,6 +26,7 @@ from brain.feature.fingerprint import DenseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
 from brain.feature.emoji import EmojiTransformer
 from brain.feature.punctuation import PunctuationTransformer
+from brain.feature.timeofday import TimeOfDayTransformer
 from config.env import Environment
 from db import DB, insert_or_update
 from db.models.facebook import FacebookCommentEntry
@@ -104,8 +105,10 @@ class TaggerFactory(object):
                 ('fingerprint', make_pipeline(
                     FieldExtractTransformer(key=1),
                     DenseFingerprintTransformer(),
-                    RandomizedPCA())
-                 )
+                    RandomizedPCA())),
+                ('timeofday', make_pipeline(
+                    FieldExtractTransformer(key=2),
+                    TimeOfDayTransformer(resolution=3, dense=True))),
             ])),
             ('clf', LabelSpreading(kernel='rbf'))
         ])
@@ -118,6 +121,7 @@ class TaggerFactory(object):
         'features__message__features__punctuation__punctuationtransformer__strict': [True, False],
         'features__message__features__punctuation__selectkbest__k': scipy.stats.randint(1, 64),
         'features__fingerprint__randomizedpca__n_components': scipy.stats.randint(1, 5),
+        'features__timeofday__timeofdaytransformer__resolution': scipy.stats.randint(1, 6),
         'clf__max_iter': scipy.stats.randint(30, 160),
         'clf__gamma': scipy.stats.expon(scale=20),
 
@@ -198,7 +202,7 @@ class TaggerFactory(object):
                 if tag not in tags_idx:
                     tags_idx[tag] = len(self._tags)
                     self._tags.append(tag)
-                x = (entry.data['message'], entry.meta['fingerprint'])
+                x = (entry.data['message'], entry.meta['fingerprint'], entry.data['created_time'])
                 y = tags_idx[tag]
                 self._xs.append(x)
                 self._ys.append(y)
