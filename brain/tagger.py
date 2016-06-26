@@ -86,6 +86,7 @@ class TaggerFactory(object):
                         ('emoji', make_pipeline(
                             EmojiTransformer(output_type=list),
                             FeatureHasher(input_type='string', non_negative=True),
+                            # why tfidf?
                             TfidfTransformer(use_idf=True, smooth_idf=True),
                             SelectKBest(chi2),
                             DenseTransformer(),
@@ -93,6 +94,8 @@ class TaggerFactory(object):
                         ('punctuation', make_pipeline(
                             PunctuationTransformer(strict=False, output_type=list),
                             FeatureHasher(input_type='string', non_negative=True),
+                            # why tfidf?
+                            TfidfTransformer(use_idf=True, smooth_idf=True),
                             SelectKBest(chi2),
                             DenseTransformer(),
                         )),
