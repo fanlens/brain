@@ -30,7 +30,7 @@ class LemmaTokenTransformer(TransformerMixin):
         self._pass_through = pass_through
 
     def transform(self, X: typing.List[typing.AnyStr], y=None, **transform_params):
-        return map(self.__call__, X)
+        return [self(x) for x in X]
 
     def fit(self, X, y=None, **fit_params):
         return self

@@ -3,7 +3,6 @@
 """module for a lemma based tokenizer"""
 
 import re
-import numpy
 from sklearn.base import TransformerMixin
 
 
