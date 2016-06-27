@@ -10,6 +10,8 @@ import uuid
 
 import numpy
 import scipy.stats
+from collections import defaultdict
+
 from sklearn.decomposition import RandomizedPCA
 from sklearn.feature_extraction import FeatureHasher
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -18,7 +20,7 @@ from sklearn.feature_selection import chi2
 from sklearn.grid_search import RandomizedSearchCV
 from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
 from sklearn.semi_supervised import LabelSpreading
-from collections import defaultdict
+from sklearn.externals import joblib
 
 from brain.feature.dense import DenseTransformer
 from brain.feature.field_extract import FieldExtractTransformer
@@ -66,7 +68,7 @@ class Tagger(object):
 
     @property
     def name(self):
-        return self._name
+        return str(self._name)
 
 
 class TaggerFactory(object):
@@ -164,6 +166,8 @@ class TaggerFactory(object):
         """:param: the file name for this model, ignore if None"""
         if name is not None:
             self._name = name
+        if os.path.isfile(_get_model_file_path(self._name)):
+            logging.warning("model with name %s already exists!" % self._name)
         return self
 
     def sources(self, sources=tuple()):
@@ -269,8 +273,7 @@ class TaggerFactory(object):
     def persist(self, overwrite=False):
         assert self._trained is not None
         with DB().ctx() as session:
-            with _get_model_file(self._name, 'wb') as pickle_file:
-                pickle.dump((self._tags, self._trained, self._params), pickle_file)
+            joblib.dump((self._tags, self._trained, self._params), _get_model_file_path(self._name))
             model = Model(id=self._name, tagset_id=self._tagset.id, user_id=self._user_id, params=self._params)
             if overwrite:
                 insert_or_update(session, model, 'id')
@@ -282,27 +285,36 @@ class TaggerFactory(object):
     @property
     def tagger(self) -> Tagger:
         if self._trained is None:
-            if os.path.isfile(_get_model_file_path(self._name)):
-                with _get_model_file(self._name) as pickle_file:
-                    self._tags, self._trained, self._params = pickle.load(pickle_file)
+            filename = _get_model_file_path(self._name)
+            if os.path.isfile(filename):
+                self._tags, self._trained, self._params = joblib.load(filename, mmap_mode='r')
             else:
                 raise FileNotFoundError('model file not found')
         return Tagger(self._name, self._tags, self._trained)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d %(threadName)s %(message)s')
+    import argparse
+
+    parser = argparse.ArgumentParser(description='provide id of comment_id')
+    parser.add_argument('-u', '--user', type=int, help='the user id', required=True)
+    parser.add_argument('-t', '--tagset', type=int, help='the tagset id', required=True)
+    parser.add_argument('-n', '--name', type=str, help='the name of the model (optional)', required=False, default=None)
+    parser.add_argument('-s', '--sources', type=str, metavar='S', nargs='+', help='the sources id', required=True)
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d (threadName)s %(message)s')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
     logger.addHandler(ch)
     factory = (TaggerFactory()
-               .user_id(5)
-               .tagset(2)
-               .sources('ladygaga')
-               .name('hello_world')
+               .user_id(args.user)
+               .tagset(args.tagset)
+               .sources(tuple(args.sources))
+               .name(args.name)
                .params(None)
                .train()
                .persist(overwrite=True))
-    logging.error(factory.tagger.name)
+    logging.info('created tagger with name ' + factory.tagger.name)
