@@ -330,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sources', type=str, metavar='S', nargs='+', help='the sources id', required=True)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d (threadName)s %(message)s')
+    logging.basicConfig(level=logging.DEBUG, format='%(relativeCreated)6d %(threadName)s %(message)s')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
