@@ -131,7 +131,7 @@ class TaggerFactory(object):
 
     def __init__(self):
         self._pages = []
-        self._tagset = {'id': None, 'tags': {}}
+        self._tagset = None
         self._name = uuid.uuid1()
         self._params = {}
         self._trained = None
@@ -141,6 +141,7 @@ class TaggerFactory(object):
         self._ys = numpy.array([])
         self._seed_idxs = defaultdict(list)
         self._sources = tuple()
+        self._score = 0.0
 
     def user_id(self, user_id):
         self._user_id = user_id
@@ -177,8 +178,8 @@ class TaggerFactory(object):
         return self
 
     def _fetch_samples(self):
-        logging.debug("DATA")
         logging.debug("=======================================")
+        logging.debug("DATA")
         logging.debug("Fetching...")
         with DB().ctx() as session:
             tagged_query = session.query(UserToTagToComment).filter(UserToTagToComment.tag.in_(self._tags))
@@ -218,8 +219,8 @@ class TaggerFactory(object):
 
     def _seeded_train_test_split(self, limit_train=-1, n_folds=3):
         for i in range(0, n_folds):
-            logging.debug("Creating Fold")
             logging.debug("=======================================")
+            logging.debug("Creating Fold")
             num_samples = len(self._ys)
             train_samples = numpy.random.permutation(num_samples)[:limit_train if limit_train >= 0 else num_samples]
             test_samples = numpy.array([], dtype=train_samples.dtype)
@@ -238,26 +239,50 @@ class TaggerFactory(object):
             logging.debug("=======================================")
             yield train_samples, test_samples
 
-    def params(self, params=None):
+    def params(self, params=None, use_existing=None):
         if params:
             self._params = params
+        if use_existing:
+            with DB().ctx() as session:
+                model = list(session.query(Model)
+                             .filter_by(tagset_id=self._tagset.id, user_id=self._user_id)
+                             .order_by(Model.trained_ts.desc())
+                             .limit(1))
+                if model:
+                    self._params = model[0].params
+                    self._score = model[0].score
         return self
 
     def _simple_train(self):
+        logging.debug("=======================================")
+        logging.debug("Training with provided parameters %s" % self._params)
+
         pipeline = self.taggger_pipeline()
         pipeline.set_params(**self._params)
+        logging.debug("fitting model")
         pipeline.fit(self._xs, self._ys)
         self._trained = pipeline
+        score_xs = []
+        score_ys = []
+        for y, idxs in self._seed_idxs.items():
+            for idx in idxs:
+                score_xs.append(self._xs[idx])
+                score_ys.append(self._ys[idx])
+        logging.debug("calculating score")
+        self._score = self._trained.score(score_xs, numpy.array(score_ys))
+        logging.debug("Score for provided params: " + str(self._score))
+        logging.debug("=======================================")
 
     def _search_train(self):
         folds = list(self._seeded_train_test_split(limit_train=-1))
-        logging.debug("Searching optimal parameters")
         logging.debug("=======================================")
+        logging.debug("Searching optimal parameters")
         gs_clf = RandomizedSearchCV(self.taggger_pipeline(), self.parameters_space, n_jobs=-1, verbose=3, n_iter=20,
                                     cv=folds)
         gs_clf.fit(self._xs, self._ys)
         logging.debug("Score %s can be reached using %s" % (gs_clf.best_score_, gs_clf.best_params_))
         logging.debug("=======================================")
+        self._score = gs_clf.best_score_
         self._params = gs_clf.best_params_
         self._trained = gs_clf.best_estimator_
 
@@ -274,7 +299,11 @@ class TaggerFactory(object):
         assert self._trained is not None
         with DB().ctx() as session:
             joblib.dump((self._tags, self._trained, self._params), _get_model_file_path(self._name))
-            model = Model(id=self._name, tagset_id=self._tagset.id, user_id=self._user_id, params=self._params)
+            model = Model(id=self._name,
+                          tagset_id=self._tagset.id,
+                          user_id=self._user_id,
+                          params=self._params,
+                          score=self._score)
             if overwrite:
                 insert_or_update(session, model, 'id')
             else:
@@ -314,7 +343,7 @@ if __name__ == "__main__":
                .tagset(args.tagset)
                .sources(tuple(args.sources))
                .name(args.name)
-               .params(None)
+               .params(use_existing=True)
                .train()
                .persist(overwrite=True))
     logging.info('created tagger with name ' + factory.tagger.name)
