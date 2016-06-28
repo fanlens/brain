@@ -202,8 +202,6 @@ class TaggerFactory(object):
             self._tags = []
             tags_idx = {None: -1}
             for idx, (entry, tag) in enumerate(query):
-                if entry.meta['page'] != 'ladygaga':
-                    assert False
                 if tag not in tags_idx:
                     tags_idx[tag] = len(self._tags)
                     self._tags.append(tag)
