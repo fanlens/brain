@@ -167,8 +167,6 @@ class TaggerFactory(object):
         """:param: the file name for this model, ignore if None"""
         if name is not None:
             self._name = name
-        if os.path.isfile(_get_model_file_path(self._name)):
-            logging.warning("model with name %s already exists!" % self._name)
         return self
 
     def sources(self, sources=tuple()):
