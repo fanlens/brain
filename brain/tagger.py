@@ -5,7 +5,6 @@
 
 import logging
 import os
-import pickle
 import uuid
 
 import numpy
@@ -32,6 +31,7 @@ from brain.feature.timeofday import TimeOfDayTransformer
 from config.env import Environment
 from db import DB, insert_or_update
 from db.models.facebook import FacebookCommentEntry
+from db.models.users import User  # important so the foreign keys know about it
 from db.models.tags import TagSet, UserToTagSet, UserToTagToComment
 from db.models.brain import Model
 
@@ -129,8 +129,7 @@ class TaggerFactory(object):
 
     }
 
-    def __init__(self):
-        self._pages = []
+    def __init__(self, progress=None):
         self._tagset = None
         self._name = uuid.uuid1()
         self._params = {}
@@ -142,6 +141,20 @@ class TaggerFactory(object):
         self._seed_idxs = defaultdict(list)
         self._sources = tuple()
         self._score = 0.0
+        self._progress = progress
+
+    def _send_progress(self, step):
+        if callable(self._progress):
+            status = dict(
+                user_id=self._user_id,
+                # tagset=self._tagset,
+                # tags=self._tags,
+                # sources=self._sources,
+                name=self._name,
+                # params=self._params,
+                step=step
+            )
+            self._progress(**status)
 
     def user_id(self, user_id):
         self._user_id = user_id
@@ -157,10 +170,6 @@ class TaggerFactory(object):
             )
             self._tagset, = list(self._tagset)
             self._tags = {tag.tag for tag in self._tagset.tags}
-        return self
-
-    def pages(self, pages):
-        self._pages = pages
         return self
 
     def name(self, name):
@@ -179,6 +188,7 @@ class TaggerFactory(object):
         logging.debug("=======================================")
         logging.debug("DATA")
         logging.debug("Fetching...")
+        self._send_progress('fetch')
         with DB().ctx() as session:
             tagged_query = session.query(UserToTagToComment).filter(UserToTagToComment.tag.in_(self._tags))
             if self._user_id is not None:
@@ -192,8 +202,6 @@ class TaggerFactory(object):
                 query = query.filter(
                     (FacebookCommentEntry.meta['page'].astext.in_(self._sources))
                 )
-            if self._pages:
-                query = query.filter(FacebookCommentEntry.meta['page'].astext.in_(self._pages))
 
             self._xs = []
             self._ys = []
@@ -217,6 +225,7 @@ class TaggerFactory(object):
         for i in range(0, n_folds):
             logging.debug("=======================================")
             logging.debug("Creating Fold")
+            self._send_progress('create_folds')
             num_samples = len(self._ys)
             train_samples = numpy.random.permutation(num_samples)[:limit_train if limit_train >= 0 else num_samples]
             test_samples = numpy.array([], dtype=train_samples.dtype)
@@ -252,7 +261,7 @@ class TaggerFactory(object):
     def _simple_train(self):
         logging.debug("=======================================")
         logging.debug("Training with provided parameters %s" % self._params)
-
+        self._send_progress('fast_train')
         pipeline = self.taggger_pipeline()
         pipeline.set_params(**self._params)
         logging.debug("fitting model")
@@ -273,7 +282,8 @@ class TaggerFactory(object):
         folds = list(self._seeded_train_test_split(limit_train=-1))
         logging.debug("=======================================")
         logging.debug("Searching optimal parameters")
-        gs_clf = RandomizedSearchCV(self.taggger_pipeline(), self.parameters_space, n_jobs=-1, verbose=3, n_iter=20,
+        self._send_progress('param_search')
+        gs_clf = RandomizedSearchCV(self.taggger_pipeline(), self.parameters_space, n_jobs=-1, verbose=10, n_iter=20,
                                     cv=folds)
         gs_clf.fit(self._xs, self._ys)
         logging.debug("Score %s can be reached using %s" % (gs_clf.best_score_, gs_clf.best_params_))
@@ -293,6 +303,7 @@ class TaggerFactory(object):
 
     def persist(self, overwrite=False):
         assert self._trained is not None
+        self._send_progress('persist')
         with DB().ctx() as session:
             joblib.dump((self._tags, self._trained, self._params), _get_model_file_path(self._name))
             model = Model(id=self._name,
