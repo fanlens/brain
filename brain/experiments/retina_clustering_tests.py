@@ -15,7 +15,7 @@ print('fetch and prepare data...')
 retina = np.zeros((128, 128), dtype=float)
 # X, T = [], []
 with DB().ctx() as session:
-    for entry in session.query(FacebookRetinaEntry).filter(FacebookRetinaEntry.page == 'ladygaga'):
+    for entry in session.query(FacebookRetinaEntry).filter(FacebookRetinaEntry.slug == 'ladygaga'):
         sample_retina = np.zeros((128, 128), dtype=int)
         for pos in entry.data['retina']:
             y, x = divmod(pos, 128)

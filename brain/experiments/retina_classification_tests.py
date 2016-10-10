@@ -27,7 +27,7 @@ def train():
             sample_retina = np.zeros(128 * 128, dtype=int)
             sample_retina[entry.data['retina']] = 1
             xs.append(sample_retina)
-            ys.append(entry.page)
+            ys.append(entry.slug)
             ts.append(entry.data['tokens'])
 
     xs, ys = np.array(xs), np.array(ys)

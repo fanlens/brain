@@ -3,6 +3,16 @@
 import numpy
 import pycld2
 from sklearn.base import TransformerMixin
+import enum
+
+
+def create_enum_type(to_string=True):
+    members = dict((code, value) for value, code in pycld2.LANGUAGES)
+    members['un'] = 'UNKNOWN'
+    if to_string:
+        return 'Enum(\'Lang\', %s)' % str(members)
+    else:
+        return enum.Enum('Lang', members)
 
 
 def language_detect(text: str) -> str:
@@ -34,3 +44,7 @@ class LanguageTransformer(TransformerMixin):
 
     def set_params(self, **_):
         pass
+
+
+if __name__ == '__main__':
+    print(create_enum_type())
