@@ -6,7 +6,4 @@
 import os
 import nltk
 
-from config.env import Environment
-
-_paths = Environment('PATHS')
-nltk.data.path.append(os.path.join(_paths['data_dir'], 'nltk_data'))
+nltk.data.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data'))
