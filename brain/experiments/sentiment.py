@@ -34,7 +34,7 @@ class SentimentLens(object):
 
     def sentiment_batch(self, texts: typing.List[str]) -> typing.List[Sentiment]:
         """:return: sentiments for the provided texts"""
-        predicted_sentiments = self._sentiment_classifier.predict(texts)
+        predicted_sentiments = self._sentiment_classifier.predict_text(texts)
         return [Sentiment(predicted) for predicted in predicted_sentiments]
 
     @classmethod

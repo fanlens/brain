@@ -56,4 +56,4 @@ if __name__ == "__main__":
         positions = fullClient.getFingerprintForText(test_txt).positions
         test_sample = np.zeros(128 * 128, dtype=int)
         test_sample[positions] = 1
-        print(clf.predict([test_sample]))
+        print(clf.predict_text([test_sample]))

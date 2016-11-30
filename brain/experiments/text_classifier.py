@@ -186,7 +186,7 @@ def benchmark(clf):
     print("train time: %0.3fs" % train_time)
 
     t0 = time()
-    pred = clf.predict(X_test)
+    pred = clf.predict_text(X_test)
     test_time = time() - t0
     print("test time:  %0.3fs" % test_time)
 

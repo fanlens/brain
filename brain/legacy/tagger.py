@@ -330,6 +330,18 @@ class TaggerFactory(object):
 
 
 if __name__ == "__main__":
+    # {
+    # "clf__gamma": 12.095692803269314,
+    # "clf__gamma": 12,
+    # "clf__max_iter": 107,
+    # "features__fingerprint__randomizedpca__n_components": 3,
+    # "features__timeofday__timeofdaytransformer__resolution": 1,
+    # "features__message__features__emoji__selectkbest__k": 49,
+    # "features__message__features__tokens__selectkbest__k": 14,
+    # "features__message__features__punctuation__selectkbest__k": 16,
+    # "features__message__features__tokens__lemmatokentransformer__short_url": False,
+    # "features__message__features__punctuation__punctuationtransformer__strict": False
+    # }
     import argparse
 
     parser = argparse.ArgumentParser(description='provide id of comment_id')

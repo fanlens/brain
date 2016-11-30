@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""module for a lemma based tokenizer"""
+"""module for a punctuation based tokenizer"""
 
+import typing
 import re
 from sklearn.base import TransformerMixin
+
+from . import output
 
 
 class PunctuationTransformer(TransformerMixin):
@@ -11,7 +14,7 @@ class PunctuationTransformer(TransformerMixin):
     strict_punctuation_pattern = re.compile(r'[!?.,:;\'"]')
     noisy_punctuation_pattern = re.compile(r'[^\w\d\s]')
 
-    def __init__(self, strict=True, output_type='string'):
+    def __init__(self, strict=True, output_type: typing.Union[list, str, dict] = dict):
         self._output_type = output_type
         self._strict = strict
 
@@ -31,7 +34,4 @@ class PunctuationTransformer(TransformerMixin):
     def __call__(self, doc):
         pattern = self.strict_punctuation_pattern if self._strict else self.noisy_punctuation_pattern
         punctuation = pattern.findall(doc)
-        if self._output_type == 'string':
-            return ''.join(punctuation)
-        else:
-            return punctuation
+        return output(self._output_type, punctuation)

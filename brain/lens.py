@@ -2,30 +2,29 @@
 # -*- coding: utf-8 -*-
 
 """a module for tagging texts based on semi supervised methods"""
-
+import operator
 import logging
 import typing
 import numpy
+import scipy.stats
 import pickle
 import uuid
 from collections import defaultdict
+from itertools import groupby
 
-from sklearn.decomposition import RandomizedPCA
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction import FeatureHasher
 from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.feature_selection import SelectKBest
-from sklearn.feature_selection import chi2
+from sklearn.preprocessing import Normalizer
 from sklearn.grid_search import RandomizedSearchCV
 from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
 from sklearn.semi_supervised import LabelSpreading
-from sklearn.externals import joblib
-from sklearn.ensemble import AdaBoostClassifier
+from sklearn.externals.joblib import Parallel, delayed
 
 from sqlalchemy import text
 
-from brain.feature.dense import DenseTransformer
 from brain.feature.field_extract import FieldExtractTransformer
-from brain.feature.fingerprint import DenseFingerprintTransformer
+from brain.feature.fingerprint import SparseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
 from brain.feature.emoji import EmojiTransformer
 from brain.feature.punctuation import PunctuationTransformer
@@ -40,7 +39,7 @@ _random_sample = text('''
     SELECT dataT.id, taggingT.tag_id, langT.language, row_number() OVER (PARTITION BY taggingT.tag_id ORDER BY random()) AS rnr
     FROM activity.data AS dataT
          INNER JOIN activity.tagging AS taggingT ON dataT.id = taggingT.data_id
-         INNER JOIN activity.tag_tagset AS tag_tagsetT ON taggingT.tag_id = tag_tagsetT.tag_id AND tag_tagsetT.id = :tagset_id
+         INNER JOIN activity.tag_tagset AS tag_tagsetT ON taggingT.tag_id = tag_tagsetT.tag_id AND tag_tagsetT.tagset_id = :tagset_id
          INNER JOIN activity.source AS srcT ON dataT.source_id = srcT.id AND srcT.id IN :sources
          INNER JOIN activity.language AS langT ON dataT.id = langT.data_id AND langT.language IN :langs
   ),
@@ -50,6 +49,7 @@ _random_sample = text('''
       FROM activity.data AS dataT TABLESAMPLE BERNOULLI (30)
            INNER JOIN activity.source AS srcT ON dataT.source_id = srcT.id AND srcT.id IN :sources
            INNER JOIN activity.language AS langT ON dataT.id = langT.data_id AND langT.language IN :langs
+           INNER JOIN activity.text AS textT ON dataT.id = textT.data_id AND char_length(textT.text) > 64
       WHERE dataT.id NOT IN (SELECT id FROM tagged)
       LIMIT :num_samples
     ) UNION ALL (
@@ -66,6 +66,11 @@ _random_sample = text('''
 ''')
 
 
+# http://stackoverflow.com/questions/1257413/iterate-over-pairs-in-a-list-circular-fashion-in-python
+def ntuples(lst, n):
+    return zip(*[lst[i:] + lst[:i] for i in range(n)])
+
+
 class Lens(object):
     @classmethod
     def load_from_id(cls, model_id: uuid.UUID):
@@ -78,7 +83,7 @@ class Lens(object):
 
     @classmethod
     def load_from_model(cls, model: Model):
-        bag = pickle.loads(model.file)
+        bag = pickle.loads(model.file.file)
         return cls(model, bag)
 
     def __init__(self, model: Model, estimator_bag: typing.List[Pipeline]):
@@ -93,22 +98,14 @@ class Lens(object):
     def estimator_bag(self):
         return self._estimator_bag
 
-    def predict_proba(self, xs: typing.List):
-        votes = defaultdict(lambda: defaultdict(lambda: []))
-        for ys, proba in [estimator.predict_proba(xs) for estimator in self.estimator_bag]:
-            for idx, y in enumerate(ys):
-                votes[idx][y] += proba
-        for idx, vote in votes.items():
-            max_num_votes = -1
-            max_score = 0
-            max_tag = None
-            for tag, scores in vote.items():
-                norm = len(scores)
-                if norm > max_num_votes:
-                    max_num_votes = norm
-                    max_score = sum(scores) / norm
-                    max_tag = tag
-            yield max_tag, max_score
+    def predict_proba(self, xs: typing.List, ys):
+        for idx, votes in enumerate(zip(*[estimator.predict(xs) for estimator in self.estimator_bag])):
+            counter = defaultdict(int)
+            for vote in votes:
+                counter[vote] += 1
+            tag = max(counter, key=counter.get)
+            print(ys[idx], votes, tag, tag == ys[idx], '\t', xs[idx][0])
+            yield tag, counter[tag] / len(self.estimator_bag)
 
     def predict(self, xs: typing.List):
         tag, _ = zip(*self.predict_proba(xs))
@@ -116,13 +113,31 @@ class Lens(object):
 
 
 class LensTrainer(object):
+    parameters_space = {
+        'features__message__features__tokens__lemmatokentransformer__short_url': [True, False],
+        'features__message__features__tokens__truncatedsvd__n_components': scipy.stats.randint(1, 200),
+        'features__message__features__tokens__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
+        'features__message__features__emoji__truncatedsvd__n_components': scipy.stats.randint(1, 20),
+        'features__message__features__emoji__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
+        'features__message__features__punctuation__punctuationtransformer__strict': [True, False],
+        'features__message__features__punctuation__truncatedsvd__n_components': scipy.stats.randint(1, 20),
+        'features__message__features__punctuation__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
+        'features__fingerprint__truncatedsvd__n_components': scipy.stats.randint(1, 10),
+        'features__fingerprint__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
+        'features__timeofday__timeofdaytransformer__resolution': scipy.stats.randint(1, 6),
+        'clf__max_iter': scipy.stats.randint(30, 160),
+        'clf__gamma': scipy.stats.expon(scale=20),
+        'clf__alpha': scipy.stats.expon(scale=0.2),
+        'clf__n_neighbors': scipy.stats.randint(2, 15),
+        'clf__kernel': ['knn', 'rbf'],
+    }
+
     def __init__(self, tagset: TagSet, sources: typing.Iterable[Source] = list(), progress=None):
         assert tagset and sources
         assert all(source.user_id == tagset.user_id for source in sources)
         self._tagset = tagset
         self._sources = sources
         self._progress = progress
-        self._DB = DB()
 
     @staticmethod
     def taggger_pipeline():
@@ -132,90 +147,109 @@ class LensTrainer(object):
                     ('extract', FieldExtractTransformer(key=0)),
                     ('features', FeatureUnion([
                         ('tokens', make_pipeline(
-                            LemmaTokenTransformer(short_url=True, output_type=list),
-                            FeatureHasher(input_type='string', non_negative=True),
+                            LemmaTokenTransformer(output_type=dict),
+                            FeatureHasher(non_negative=True, n_features=200),
                             TfidfTransformer(use_idf=True, smooth_idf=True),
-                            SelectKBest(chi2),
-                            DenseTransformer(),
+                            TruncatedSVD(algorithm='randomized')
                         )),
-                        ('emoji', make_pipeline(  # todo proper evaluation of feature, seemed to make quite a difference
-                            EmojiTransformer(output_type=list),
-                            FeatureHasher(input_type='string', non_negative=True),
-                            # why tfidf?
+                        ('emoji', make_pipeline(
+                            EmojiTransformer(output_type=dict),
+                            FeatureHasher(non_negative=True, n_features=20),
                             TfidfTransformer(use_idf=True, smooth_idf=True),
-                            SelectKBest(chi2),
-                            DenseTransformer(),
+                            TruncatedSVD(algorithm='randomized'),
                         )),
-                        ('punctuation', make_pipeline(  # todo proper evaluation of feature
-                            PunctuationTransformer(strict=False, output_type=list),
-                            FeatureHasher(input_type='string', non_negative=True),
-                            # why tfidf?
+                        ('punctuation', make_pipeline(
+                            PunctuationTransformer(strict=False, output_type=dict),
+                            FeatureHasher(non_negative=True, n_features=20),
                             TfidfTransformer(use_idf=True, smooth_idf=True),
-                            SelectKBest(chi2),
-                            DenseTransformer(),
+                            TruncatedSVD(algorithm='randomized'),
                         )),
                     ])),
                 ])),
                 ('fingerprint', make_pipeline(
                     FieldExtractTransformer(key=1),
-                    DenseFingerprintTransformer(),
-                    RandomizedPCA())),
-                ('timeofday', make_pipeline(  # todo proper evaluation of feature
+                    SparseFingerprintTransformer(),
+                    TruncatedSVD(algorithm='randomized'),
+                    Normalizer(copy=False)
+                )),
+                ('timeofday', make_pipeline(
                     FieldExtractTransformer(key=2),
-                    TimeOfDayTransformer(resolution=3, dense=True))),
+                    TimeOfDayTransformer(dense=True),
+                    Normalizer(copy=False)
+                )),
             ])),
-            ('clf', LabelSpreading(kernel='rbf'))
+            ('clf', LabelSpreading())
         ])
 
-    def _fetch_samples(self):
-        logging.debug("Fetching...")
-        with self._DB.ctx() as session:
+    def _fetch_samples(self, num_samples: int = 128, num_truths: int = 16):
+        logging.debug("fetching sampleset with %d truths and %d samples..." % (num_truths, num_samples))
+        with DB().ctx() as session:
             query = session.execute(_random_sample,
                                     dict(tagset_id=self._tagset.id,
-                                         num_samples=30,
-                                         num_truths=2,
+                                         num_samples=num_samples,
+                                         num_truths=num_truths,
                                          langs=tuple(['en']),
                                          sources=tuple(source.id for source in self._sources)))
             for id, tag_id, language, message, created_time, fingerprint in query:
                 yield tag_id or -1, (message, fingerprint, created_time)
+        logging.debug("... done fetching sampleset")
 
-    def _find_params(self) -> dict:
-        return {
-            # "clf__gamma": 12.095692803269314,
-            "clf__gamma": 2.5,
-            "clf__max_iter": 107,
-            "features__fingerprint__randomizedpca__n_components": 3,
-            "features__timeofday__timeofdaytransformer__resolution": 1,
-            "features__message__features__emoji__selectkbest__k": 49,
-            "features__message__features__tokens__selectkbest__k": 14,
-            "features__message__features__punctuation__selectkbest__k": 16,
-            "features__message__features__tokens__lemmatokentransformer__short_url": False,
-            "features__message__features__punctuation__punctuationtransformer__strict": False
-        }
+    def _find_params(self, num_folds=3) -> dict:
+        logging.debug("search best parameters using %d folds..." % num_folds)
+        folds = [list(self._fetch_samples()) for _ in range(0, num_folds)]
+        folds_idx = []
+        cur_idx = 0
+        for fold in folds:
+            stop = cur_idx + len(fold)
+            truths = []
+            for idx, sample in enumerate(fold):
+                if sample[0] != -1:
+                    truths.append(cur_idx + idx)
+            folds_idx.append((cur_idx, stop, truths))
+            cur_idx = stop
+        search = RandomizedSearchCV(
+            self.taggger_pipeline(),
+            self.parameters_space,
+            n_jobs=1, verbose=10, n_iter=20,
+            cv=[(numpy.array(range(start, stop)), numpy.array(truths)) for (start, stop, _), (_, _, truths) in
+                ntuples(folds_idx, 2)])
+        ys, xs = zip(*[sample for fold in folds for sample in fold])
+        search.fit(xs, ys)
+        logging.debug("... done searching parameters, achieved score of %f with params %s" % (
+            search.best_score_, search.best_params_,))
+        return search.best_params_, search.best_score_
 
-    def _train_stub(self, params: dict):
+    def _train_stub(self, params: dict, _stub_id=uuid.uuid1()):
         ys, xs = zip(*self._fetch_samples())
         ys = numpy.array(ys)
+        logging.debug('training stub %s...' % _stub_id)
         pipeline = self.taggger_pipeline()
-        logging.debug('training')
         pipeline.set_params(**params)
         pipeline.fit(xs, ys)
+        logging.debug('... done training stub %s' % _stub_id)
         return pipeline
 
-    def train(self, n_estimators=100, params: dict = {}):
-        params = params or self._find_params()
-        bag = [self._train_stub(params) for _ in range(0, n_estimators)]
-        # todo real score
-        model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user_id, params=params, score=1.0)
+    def train(self, n_estimators=100, _params: dict = None, _score: float = 0.0):
+        logging.debug('training estimator bag with %d estimators...' % n_estimators)
+        if _params:
+            params, score = _params, _score
+        else:
+            params, score = self._find_params()
+        bag = Parallel(n_jobs=-1)(delayed(self._train_stub)(params, i) for i in range(0, n_estimators))
+        model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user_id, params=params, score=score)
         for source in self._sources:
             model.sources.append(source)
+        logging.debug('... done training estimator bag')
         return Lens(model, bag)
 
     def persist(self, lens: Lens):
-        with self._DB.ctx() as session:
-            lens.model.file = ModelFile(model_id=lens.model.id, file=pickle.dumps(lens.estimator_bag))
+        logging.debug('persisting trained model...')
+        with DB().ctx() as session:
+            lens.model.file = ModelFile(model_id=lens.model.id,
+                                        file=pickle.dumps(lens.estimator_bag, protocol=pickle.HIGHEST_PROTOCOL))
             session.add(lens.model)
             session.commit()
+            logging.debug('... done persisting trained model, new id is: %s' % lens.model.id)
             return lens.model.id
 
 
@@ -227,9 +261,30 @@ if __name__ == "__main__":
     ch.setLevel(logging.DEBUG)
     logger.addHandler(ch)
 
+    with open('/Users/chris/Projects/fanlens/data/testset.pickle', 'rb') as testsetfile:
+        ys_test, xs_test = zip(*pickle.load(testsetfile))
+        num_test = len(ys_test)
+
     with DB().ctx() as session:
         tagset = session.query(TagSet).get(1)
-        sources = session.query(Source).filter(Source.id.in_((1, 2))).all()
-        factory = LensTrainer(tagset, sources)
-        lens = factory.train(n_estimators=2)
-        factory.persist(lens)
+        sources = session.query(Source).filter(Source.id.in_((2,))).all()
+    factory = LensTrainer(tagset, sources)
+    params = {'features__fingerprint__truncatedsvd__n_iter': 10,
+              'features__message__features__tokens__truncatedsvd__n_components': 106,
+              'features__timeofday__timeofdaytransformer__resolution': 5,
+              'features__message__features__punctuation__truncatedsvd__n_iter': 3, 'clf__max_iter': 111,
+              'clf__n_neighbors': 2, 'clf__gamma': 17.222983787280945,
+              'features__message__features__emoji__truncatedsvd__n_components': 16,
+              'features__fingerprint__truncatedsvd__n_components': 5, 'clf__alpha': 0.3307067042583709,
+              'features__message__features__tokens__truncatedsvd__n_iter': 4,
+              'features__message__features__emoji__truncatedsvd__n_iter': 10, 'clf__kernel': 'rbf',
+              'features__message__features__tokens__lemmatokentransformer__short_url': False,
+              'features__message__features__punctuation__punctuationtransformer__strict': False,
+              'features__message__features__punctuation__truncatedsvd__n_components': 17}
+    lens = factory.train(n_estimators=5, _params=params, _score=1.0)
+    ys_test = [9 if ys == 'spam' else 24 if ys == 'ham' else -1 for ys in ys_test]
+    predicted = lens.predict_proba(xs_test, ys_test)
+    plable, pscore = zip(*list(predicted))
+    num_wrong = sum([1 if a != b else 0 for a, b in zip(plable, ys_test)])
+    print('predicted %d wrong samples from %d (%f correct)' % (num_wrong, num_test, 1 - num_wrong / num_test))
+    # factory.persist(lens)

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""module for a lemma based tokenizer"""
+"""module for a emoji based tokenizer"""
 
+import typing
 import re
 from sklearn.base import TransformerMixin
 
+from . import output
 
 class EmojiTransformer(TransformerMixin):
     """extract all emojis"""
@@ -15,7 +17,7 @@ class EmojiTransformer(TransformerMixin):
                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
                                "]+", flags=re.UNICODE)
 
-    def __init__(self, output_type='string'):
+    def __init__(self, output_type: typing.Union[list, str, dict] = dict):
         self._output_type = output_type
 
     def transform(self, X, y=None, **transform_params):
@@ -32,7 +34,4 @@ class EmojiTransformer(TransformerMixin):
 
     def __call__(self, doc):
         emojis = self.emoji_pattern.findall(doc)
-        if self._output_type == 'string':
-            return ''.join(emojis)
-        else:
-            return emojis
+        return output(self._output_type, emojis)

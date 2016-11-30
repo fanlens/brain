@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""module for a lemma based tokenizer"""
 
 from sklearn.base import TransformerMixin
 from functools import singledispatch

@@ -5,6 +5,7 @@
 import numpy
 import dateutil.parser
 import datetime
+from scipy.sparse import lil_matrix
 from sklearn.base import TransformerMixin
 
 
@@ -18,7 +19,14 @@ class TimeOfDayTransformer(TransformerMixin):
         self._resolution = resolution
 
     def transform(self, X, y=None, **transform_params):
-        return [self(x) for x in X]
+        num_ticks = 24 * self._resolution
+        if self._dense:
+            mat = numpy.zeros((len(X), num_ticks), dtype=numpy.float64)
+        else:
+            mat = lil_matrix((len(X), num_ticks), dtype=numpy.float64)
+        for idx, x in enumerate(X):
+            mat[idx, self(x)] = 1
+        return mat
 
     def fit(self, X, y=None, **fit_params):
         return self
@@ -29,16 +37,6 @@ class TimeOfDayTransformer(TransformerMixin):
     def set_params(self, **params):
         self._dense = params.get('dense', self._dense)
         self._resolution = params.get('resolution', self._resolution)
-
-    def _format_return(self, val):
-        num_ticks = 24 * self._resolution
-        assert 0 <= val < num_ticks
-        if self._dense:
-            dense = numpy.zeros(num_ticks, dtype='u1')
-            dense[val] = 1
-            return dense
-        else:
-            return val
 
     def __call__(self, timestamp):
         if isinstance(timestamp, int):
@@ -53,4 +51,4 @@ class TimeOfDayTransformer(TransformerMixin):
         midnight = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
         minutes = (timestamp - midnight).seconds / 60
         tick = int(round(minutes / (60 / self._resolution))) % (24 * self._resolution)  # 24 -> 0 via modulo
-        return self._format_return(tick)
+        return tick
