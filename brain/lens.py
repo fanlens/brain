@@ -75,8 +75,8 @@ class Lens(object):
     @classmethod
     def load_from_id(cls, model_id: uuid.UUID):
         with DB().ctx() as session:
+            model = session.query(Model).get(str(model_id))
             try:
-                model = session.query(Model).get(model_id)
                 return model and cls.load_from_model(model)
             finally:
                 session.expunge(model.file)
@@ -91,25 +91,25 @@ class Lens(object):
         self._model = model
 
     @property
-    def model(self):
+    def model(self) -> Model:
         return self._model
 
     @property
     def estimator_bag(self):
         return self._estimator_bag
 
-    def predict_proba(self, xs: typing.List, ys):
+    def predict_proba(self, xs: typing.List):
+        n_bags = len(self.estimator_bag)
         for idx, votes in enumerate(zip(*[estimator.predict(xs) for estimator in self.estimator_bag])):
             counter = defaultdict(int)
             for vote in votes:
                 counter[vote] += 1
-            tag = max(counter, key=counter.get)
-            print(ys[idx], votes, tag, tag == ys[idx], '\t', xs[idx][0])
-            yield tag, counter[tag] / len(self.estimator_bag)
+            yield [[int(tag), score / n_bags] for tag, score in counter.items()]
 
     def predict(self, xs: typing.List):
-        tag, _ = zip(*self.predict_proba(xs))
-        yield from tag
+        for tags_proba in self.predict_proba(xs):
+            tag, _ = max(tags_proba, operator.itemgetter(1))
+            yield tag
 
 
 class LensTrainer(object):
