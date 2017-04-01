@@ -2,37 +2,34 @@
 # -*- coding: utf-8 -*-
 
 """a module for tagging texts based on semi supervised methods"""
-import operator
 import logging
-import typing
-import numpy
-import scipy.stats
+import operator
 import pickle
 import uuid
 from collections import defaultdict
-from itertools import groupby
 
-from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction import FeatureHasher
-from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.preprocessing import Normalizer
-from sklearn.grid_search import RandomizedSearchCV
-from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
-from sklearn.semi_supervised import LabelSpreading
-from sklearn.externals.joblib import Parallel, delayed
-
-from sqlalchemy import text
-
+import numpy
+import scipy.stats
+import typing
+from brain.feature.capitalization import CapitalizationTransformer
+from brain.feature.emoji import EmojiTransformer
 from brain.feature.field_extract import FieldExtractTransformer
 from brain.feature.fingerprint import SparseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
-from brain.feature.emoji import EmojiTransformer
 from brain.feature.punctuation import PunctuationTransformer
 from brain.feature.timeofday import TimeOfDayTransformer
-
 from db import DB
 from db.models.activities import TagSet, Source
 from db.models.brain import Model, ModelFile
+from sklearn.decomposition import TruncatedSVD
+from sklearn.externals.joblib import Parallel, delayed
+from sklearn.feature_extraction import FeatureHasher
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.grid_search import RandomizedSearchCV
+from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
+from sklearn.preprocessing import Normalizer
+from sklearn.semi_supervised import LabelSpreading
+from sqlalchemy import text
 
 _random_sample = text('''
   WITH tagged AS (
@@ -104,7 +101,13 @@ class Lens(object):
             counter = defaultdict(int)
             for vote in votes:
                 counter[vote] += 1
-            yield [[int(tag), score / n_bags] for tag, score in counter.items()]
+            max_score = 0
+            max_tag = None
+            for tag, score in counter.items():
+                if score > max_score:
+                    max_score = score
+                    max_tag = tag
+            yield [int(max_tag), max_score / n_bags]
 
     def predict(self, xs: typing.List):
         for tags_proba in self.predict_proba(xs):
@@ -112,8 +115,17 @@ class Lens(object):
             yield tag
 
 
+import random
+
+
+def make_weight_dist(*weight_names, num_samples=50):
+    for s in range(0, num_samples):
+        yield dict((name, random.random()) for name in weight_names)
+
+
 class LensTrainer(object):
     parameters_space = {
+        'features__message__features__capitalization__capitalizationtransformer__fraction': [True, False],
         'features__message__features__tokens__lemmatokentransformer__short_url': [True, False],
         'features__message__features__tokens__truncatedsvd__n_components': scipy.stats.randint(1, 200),
         'features__message__features__tokens__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
@@ -125,6 +137,8 @@ class LensTrainer(object):
         'features__fingerprint__truncatedsvd__n_components': scipy.stats.randint(1, 10),
         'features__fingerprint__truncatedsvd__n_iter': scipy.stats.randint(3, 12),
         'features__timeofday__timeofdaytransformer__resolution': scipy.stats.randint(1, 6),
+        'features__transformer_weights': list(make_weight_dist('message', 'fingerprint', 'timeofday')),
+        # 'features__transformer_weights': [dict(message=0.7, fingerprint=1.0, timeofday=0.2)],
         'clf__max_iter': scipy.stats.randint(30, 160),
         'clf__gamma': scipy.stats.expon(scale=20),
         'clf__alpha': scipy.stats.expon(scale=0.2),
@@ -134,13 +148,14 @@ class LensTrainer(object):
 
     def __init__(self, tagset: TagSet, sources: typing.Iterable[Source] = list(), progress=None):
         assert tagset and sources
-        assert all(source.user_id == tagset.user_id for source in sources)
+        assert all(source.user.id == tagset.user.id for source in sources)
         self._tagset = tagset
         self._sources = sources
         self._progress = progress
 
     @staticmethod
     def taggger_pipeline():
+        # todo: use weights for the features! nonlinear?!
         return Pipeline([
             ('features', FeatureUnion([
                 ('message', Pipeline([
@@ -164,24 +179,27 @@ class LensTrainer(object):
                             TfidfTransformer(use_idf=True, smooth_idf=True),
                             TruncatedSVD(algorithm='randomized'),
                         )),
+                        ('capitalization', make_pipeline(
+                            CapitalizationTransformer(),
+                        )),
                     ])),
                 ])),
                 ('fingerprint', make_pipeline(
                     FieldExtractTransformer(key=1),
                     SparseFingerprintTransformer(),
                     TruncatedSVD(algorithm='randomized'),
-                    Normalizer(copy=False)
+                    Normalizer(copy=False),
                 )),
                 ('timeofday', make_pipeline(
                     FieldExtractTransformer(key=2),
                     TimeOfDayTransformer(dense=True),
-                    Normalizer(copy=False)
+                    Normalizer(copy=False),
                 )),
             ])),
             ('clf', LabelSpreading())
         ])
 
-    def _fetch_samples(self, num_samples: int = 128, num_truths: int = 16):
+    def _fetch_samples(self, num_truths: int, num_samples: int):
         logging.debug("fetching sampleset with %d truths and %d samples..." % (num_truths, num_samples))
         with DB().ctx() as session:
             query = session.execute(_random_sample,
@@ -194,7 +212,7 @@ class LensTrainer(object):
                 yield tag_id or -1, (message, fingerprint, created_time)
         logging.debug("... done fetching sampleset")
 
-    def _find_params(self, num_folds=3) -> dict:
+    def _find_params(self, num_folds=3) -> tuple:
         logging.debug("search best parameters using %d folds..." % num_folds)
         folds = [list(self._fetch_samples()) for _ in range(0, num_folds)]
         folds_idx = []
@@ -219,8 +237,8 @@ class LensTrainer(object):
             search.best_score_, search.best_params_,))
         return search.best_params_, search.best_score_
 
-    def _train_stub(self, params: dict, _stub_id=uuid.uuid1()):
-        ys, xs = zip(*self._fetch_samples())
+    def _train_stub(self, params: dict, num_truths: int, num_samples: int, _stub_id=uuid.uuid1()):
+        ys, xs = zip(*self._fetch_samples(num_truths=num_truths, num_samples=num_samples))
         ys = numpy.array(ys)
         logging.debug('training stub %s...' % _stub_id)
         pipeline = self.taggger_pipeline()
@@ -229,14 +247,16 @@ class LensTrainer(object):
         logging.debug('... done training stub %s' % _stub_id)
         return pipeline
 
-    def train(self, n_estimators=100, _params: dict = None, _score: float = 0.0):
+    def train(self, n_estimators=100, num_truths: int = 48, num_samples: int = 128, _params: dict = None,
+              _score: float = 0.0):
         logging.debug('training estimator bag with %d estimators...' % n_estimators)
         if _params:
             params, score = _params, _score
         else:
             params, score = self._find_params()
-        bag = Parallel(n_jobs=-1)(delayed(self._train_stub)(params, i) for i in range(0, n_estimators))
-        model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user_id, params=params, score=score)
+
+        bag = Parallel(n_jobs=-1)(delayed(self._train_stub)(params, num_truths, num_samples, i) for i in range(0, n_estimators))
+        model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user.id, params=params, score=score)
         for source in self._sources:
             model.sources.append(source)
         logging.debug('... done training estimator bag')
@@ -268,23 +288,41 @@ if __name__ == "__main__":
     with DB().ctx() as session:
         tagset = session.query(TagSet).get(1)
         sources = session.query(Source).filter(Source.id.in_((2,))).all()
-    factory = LensTrainer(tagset, sources)
-    params = {'features__fingerprint__truncatedsvd__n_iter': 10,
-              'features__message__features__tokens__truncatedsvd__n_components': 106,
-              'features__timeofday__timeofdaytransformer__resolution': 5,
-              'features__message__features__punctuation__truncatedsvd__n_iter': 3, 'clf__max_iter': 111,
-              'clf__n_neighbors': 2, 'clf__gamma': 17.222983787280945,
-              'features__message__features__emoji__truncatedsvd__n_components': 16,
-              'features__fingerprint__truncatedsvd__n_components': 5, 'clf__alpha': 0.3307067042583709,
-              'features__message__features__tokens__truncatedsvd__n_iter': 4,
-              'features__message__features__emoji__truncatedsvd__n_iter': 10, 'clf__kernel': 'rbf',
-              'features__message__features__tokens__lemmatokentransformer__short_url': False,
-              'features__message__features__punctuation__punctuationtransformer__strict': False,
-              'features__message__features__punctuation__truncatedsvd__n_components': 17}
-    lens = factory.train(n_estimators=5, _params=params, _score=1.0)
-    ys_test = [9 if ys == 'spam' else 24 if ys == 'ham' else -1 for ys in ys_test]
-    predicted = lens.predict_proba(xs_test, ys_test)
-    plable, pscore = zip(*list(predicted))
-    num_wrong = sum([1 if a != b else 0 for a, b in zip(plable, ys_test)])
-    print('predicted %d wrong samples from %d (%f correct)' % (num_wrong, num_test, 1 - num_wrong / num_test))
-    # factory.persist(lens)
+        factory = LensTrainer(tagset, sources)
+        params = {'features__fingerprint__truncatedsvd__n_iter': 10,
+                  'features__message__features__tokens__truncatedsvd__n_components': 106,
+                  'features__timeofday__timeofdaytransformer__resolution': 5,
+                  'features__message__features__punctuation__truncatedsvd__n_iter': 3, 'clf__max_iter': 111,
+                  'clf__n_neighbors': 2, 'clf__gamma': 17.222983787280945,
+                  'features__message__features__emoji__truncatedsvd__n_components': 16,
+                  'features__fingerprint__truncatedsvd__n_components': 5, 'clf__alpha': 0.3307067042583709,
+                  'features__message__features__tokens__truncatedsvd__n_iter': 4,
+                  'features__message__features__emoji__truncatedsvd__n_iter': 10, 'clf__kernel': 'rbf',
+                  'features__message__features__tokens__lemmatokentransformer__short_url': False,
+                  'features__message__features__punctuation__punctuationtransformer__strict': False,
+                  'features__message__features__punctuation__truncatedsvd__n_components': 17,
+                  'features__message__features__capitalization__capitalizationtransformer__fraction': True}
+        params = {'clf__max_iter': 151, 'clf__gamma': 15.207618172582782,
+                  'features__message__features__punctuation__truncatedsvd__n_components': 3,
+                  'features__fingerprint__truncatedsvd__n_components': 3,
+                  'features__message__features__tokens__truncatedsvd__n_iter': 8,
+                  'features__message__features__tokens__truncatedsvd__n_components': 106,
+                  'features__message__features__emoji__truncatedsvd__n_components': 1, 'clf__kernel': 'rbf',
+                  'features__fingerprint__truncatedsvd__n_iter': 5,
+                  'features__transformer_weights': {'timeofday': 0.2030570157381013, 'message': 0.6336048802942279,
+                                                    'fingerprint': 0.7186676931811034},
+                  'features__message__features__punctuation__punctuationtransformer__strict': True,
+                  'features__message__features__tokens__lemmatokentransformer__short_url': True,
+                  'features__message__features__capitalization__capitalizationtransformer__fraction': True,
+                  'clf__alpha': 0.00010680435630783633, 'features__message__features__emoji__truncatedsvd__n_iter': 10,
+                  'clf__n_neighbors': 13, 'features__message__features__punctuation__truncatedsvd__n_iter': 10,
+                  'features__timeofday__timeofdaytransformer__resolution': 4}
+        # lens = factory.train(n_estimators=10)
+        # lens = factory.train(n_estimators=10, _params=params, _score=0.834)
+        lens = factory.train(n_estimators=1, num_truths=1000, num_samples=2000, _params=params, _score=0.834)
+        ys_test = [24 if ys == 'spam' else 9 if ys == 'ham' else -1 for ys in ys_test]
+        predicted = lens.predict_proba(xs_test)
+        plable, pscore = zip(*list(predicted))
+        num_wrong = sum([1 if a != b else 0 for a, b in zip(plable, ys_test)])
+        print('predicted %d wrong samples from %d (%f correct)' % (num_wrong, num_test, 1 - num_wrong / num_test))
+        # factory.persist(lens)
