@@ -21,6 +21,7 @@ setup(
         'scikit-learn',
         'nltk',
         'sqlalchemy',
+        'google-cloud-translate',
         'python-dateutil'
     ],
     package_data={'fl-brain.nltk_data': ['*']}

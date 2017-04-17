@@ -19,7 +19,11 @@ def language_detect(text: str) -> str:
     """:return: the language short string detected in the text"""
     if isinstance(text, tuple):
         text = text[0]
-    return pycld2.detect(text)[2][0][1]
+    try:
+        return pycld2.detect(text.replace('\x7f', '').replace('\b', ''))[2][0][1]
+    except pycld2.error as err:
+        print('couldn\'t process input:', text)
+        print(err)
 
 
 def is_english(text: str) -> bool:
