@@ -5,12 +5,12 @@
 import logging
 import operator
 import pickle
+import typing
 import uuid
 from collections import defaultdict
 
 import numpy
 import scipy.stats
-import typing
 from brain.feature.capitalization import CapitalizationTransformer
 from brain.feature.emoji import EmojiTransformer
 from brain.feature.field_extract import FieldExtractTransformer
@@ -206,15 +206,15 @@ class LensTrainer(object):
                                     dict(tagset_id=self._tagset.id,
                                          num_samples=num_samples,
                                          num_truths=num_truths,
-                                         langs=tuple(['en']),
+                                         langs=tuple(['en', 'de']),  # todo find better way to filter for translations
                                          sources=tuple(source.id for source in self._sources)))
             for id, tag_id, language, message, created_time, fingerprint in query:
-                yield tag_id or -1, (message, fingerprint, created_time)
+                yield tag_id or -1, (message, fingerprint, created_time)  # todo yield the translation
         logging.debug("... done fetching sampleset")
 
-    def _find_params(self, num_folds=3) -> tuple:
+    def _find_params(self, num_truths, num_samples, num_folds=3) -> tuple:
         logging.debug("search best parameters using %d folds..." % num_folds)
-        folds = [list(self._fetch_samples()) for _ in range(0, num_folds)]
+        folds = [list(self._fetch_samples(num_truths=num_truths, num_samples=num_samples)) for _ in range(0, num_folds)]
         folds_idx = []
         cur_idx = 0
         for fold in folds:
@@ -253,9 +253,10 @@ class LensTrainer(object):
         if _params:
             params, score = _params, _score
         else:
-            params, score = self._find_params()
+            params, score = self._find_params(num_truths=num_truths, num_samples=num_samples)
 
-        bag = Parallel(n_jobs=-1)(delayed(self._train_stub)(params, num_truths, num_samples, i) for i in range(0, n_estimators))
+        bag = Parallel(n_jobs=-1)(
+            delayed(self._train_stub)(params, num_truths, num_samples, i) for i in range(0, n_estimators))
         model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user.id, params=params, score=score)
         for source in self._sources:
             model.sources.append(source)
@@ -281,14 +282,14 @@ if __name__ == "__main__":
     ch.setLevel(logging.DEBUG)
     logger.addHandler(ch)
 
-    with open('/Users/chris/Projects/fanlens/data/testset.pickle', 'rb') as testsetfile:
-        ys_test, xs_test = zip(*pickle.load(testsetfile))
-        num_test = len(ys_test)
+    # with open('/Users/chris/Projects/fanlens/data/testset.pickle', 'rb') as testsetfile:
+    #     ys_test, xs_test = zip(*pickle.load(testsetfile))
+    #     num_test = len(ys_test)
 
     with DB().ctx() as session:
-        tagset = session.query(TagSet).get(1)
-        sources = session.query(Source).filter(Source.id.in_((2,))).all()
-        factory = LensTrainer(tagset, sources)
+        # tagset = session.query(TagSet).get(1)
+        # sources = session.query(Source).filter(Source.id.in_((2,))).all()
+        # factory = LensTrainer(tagset, sources)
         params = {'features__fingerprint__truncatedsvd__n_iter': 10,
                   'features__message__features__tokens__truncatedsvd__n_components': 106,
                   'features__timeofday__timeofdaytransformer__resolution': 5,
@@ -319,10 +320,44 @@ if __name__ == "__main__":
                   'features__timeofday__timeofdaytransformer__resolution': 4}
         # lens = factory.train(n_estimators=10)
         # lens = factory.train(n_estimators=10, _params=params, _score=0.834)
-        lens = factory.train(n_estimators=1, num_truths=1000, num_samples=2000, _params=params, _score=0.834)
-        ys_test = [24 if ys == 'spam' else 9 if ys == 'ham' else -1 for ys in ys_test]
-        predicted = lens.predict_proba(xs_test)
-        plable, pscore = zip(*list(predicted))
-        num_wrong = sum([1 if a != b else 0 for a, b in zip(plable, ys_test)])
-        print('predicted %d wrong samples from %d (%f correct)' % (num_wrong, num_test, 1 - num_wrong / num_test))
+        # lens = factory.train(n_estimators=1, num_truths=1000, num_samples=2000, _params=params, _score=0.834)
+        # ys_test = [24 if ys == 'spam' else 9 if ys == 'ham' else -1 for ys in ys_test]
+        # predicted = lens.predict_proba(xs_test)
+        # plable, pscore = zip(*list(predicted))
+        # num_wrong = sum([1 if a != b else 0 for a, b in zip(plable, ys_test)])
+        # print('predicted %d wrong samples from %d (%f correct)' % (num_wrong, num_test, 1 - num_wrong / num_test))
         # factory.persist(lens)
+
+        tagset = session.query(TagSet).get(6)
+        sources = session.query(Source).filter(Source.id.in_((9,))).all()
+        factory = LensTrainer(tagset, sources)
+        kjero_params = {'clf__n_neighbors': 10,
+                        'features__message__features__tokens__lemmatokentransformer__short_url': True,
+                        'features__message__features__punctuation__punctuationtransformer__strict': False,
+                        'features__fingerprint__truncatedsvd__n_iter': 11,
+                        'features__timeofday__timeofdaytransformer__resolution': 1,
+                        'features__message__features__tokens__truncatedsvd__n_iter': 5,
+                        'features__transformer_weights': {'timeofday': 0.5821752747117653,
+                                                          'message': 0.5767438061256892,
+                                                          'fingerprint': 0.7043198536827283},
+                        'clf__alpha': 0.3742258966108718,
+                        'features__message__features__emoji__truncatedsvd__n_iter': 4,
+                        'features__message__features__punctuation__truncatedsvd__n_iter': 11,
+                        'features__message__features__capitalization__capitalizationtransformer__fraction': True,
+                        'features__message__features__emoji__truncatedsvd__n_components': 4,
+                        'features__fingerprint__truncatedsvd__n_components': 6,
+                        'features__message__features__tokens__truncatedsvd__n_components': 25, 'clf__max_iter': 58,
+                        'clf__gamma': 38.065100724023573,
+                        'features__message__features__punctuation__truncatedsvd__n_components': 2,
+                        'clf__kernel': 'rbf'}
+
+        lens = factory.train(n_estimators=10, num_truths=200, num_samples=200, _params=kjero_params)
+
+        print("predicting...")
+        from db.models.activities import Data, Tagging
+
+        xs_test = [(entry.text.translations.one().translation, entry.fingerprint.fingerprint, entry.time.time) for entry
+                   in session.query(Data).join(Tagging, Tagging.data_id == Data.id).filter(Tagging.tag_id == 300)]
+        ys_pred = list(lens.predict_proba(xs_test))
+        num_right = sum([1 if y == 300 else 0 for y, _ in ys_pred])
+        print(num_right, 'right predictions', num_right/len(ys_pred)*100, '%')

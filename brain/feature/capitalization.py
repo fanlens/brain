@@ -35,4 +35,4 @@ class CapitalizationTransformer(TransformerMixin):
             return num_uppercase
 
         num_lowercase = len(self.lowercase_pattern.findall(doc))
-        return num_uppercase / (num_uppercase + num_lowercase)
+        return num_uppercase / max((num_uppercase + num_lowercase), 1)
