@@ -101,13 +101,7 @@ class Lens(object):
             counter = defaultdict(int)
             for vote in votes:
                 counter[vote] += 1
-            max_score = 0
-            max_tag = None
-            for tag, score in counter.items():
-                if score > max_score:
-                    max_score = score
-                    max_tag = tag
-            yield [int(max_tag), max_score / n_bags]
+            yield [[int(tag), score / n_bags] for tag, score in counter.items()]
 
     def predict(self, xs: typing.List):
         for tags_proba in self.predict_proba(xs):
@@ -263,15 +257,14 @@ class LensTrainer(object):
         logging.debug('... done training estimator bag')
         return Lens(model, bag)
 
-    def persist(self, lens: Lens):
+    def persist(self, lens: Lens, session):
         logging.debug('persisting trained model...')
-        with DB().ctx() as session:
-            lens.model.file = ModelFile(model_id=lens.model.id,
+        lens.model.file = ModelFile(model_id=lens.model.id,
                                         file=pickle.dumps(lens.estimator_bag, protocol=pickle.HIGHEST_PROTOCOL))
-            session.add(lens.model)
-            session.commit()
-            logging.debug('... done persisting trained model, new id is: %s' % lens.model.id)
-            return lens.model.id
+        session.add(lens.model)
+        session.commit()
+        logging.debug('... done persisting trained model, new id is: %s' % lens.model.id)
+        return lens.model.id
 
 
 if __name__ == "__main__":
