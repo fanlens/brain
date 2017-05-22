@@ -53,13 +53,14 @@ _random_sample = text('''
       SELECT id, tag_id, language FROM tagged WHERE rnr <= :num_truths
     )
   )
-  SELECT dataT.id, random_ids.tag_id, random_ids.language, textT.text, timeT.time, fpT.fingerprint
+  SELECT dataT.id, random_ids.tag_id, random_ids.language, textT.text, timeT.time, fpT.fingerprint, translationT.translation
   FROM activity.data AS dataT
        INNER JOIN random_ids ON dataT.id = random_ids.id
        INNER JOIN activity.source AS srcT ON dataT.source_id = srcT.id
        INNER JOIN activity.text AS textT ON dataT.id = textT.data_id
        INNER JOIN activity.fingerprint AS fpT ON dataT.id = fpT.data_id
        INNER JOIN activity.time AS timeT ON dataT.id = timeT.data_id
+       LEFT OUTER JOIN activity.translation as translationT ON textT.id = translationT.text_id AND translationT.target_language = 'en'
 ''')
 
 
@@ -202,8 +203,8 @@ class LensTrainer(object):
                                          num_truths=num_truths,
                                          langs=tuple(['en', 'de']),  # todo find better way to filter for translations
                                          sources=tuple(source.id for source in self._sources)))
-            for id, tag_id, language, message, created_time, fingerprint in query:
-                yield tag_id or -1, (message, fingerprint, created_time)  # todo yield the translation
+            for id, tag_id, language, message, created_time, fingerprint, translation in query:
+                yield tag_id or -1, (translation or message, fingerprint, created_time)  # todo yield the translation
         logging.debug("... done fetching sampleset")
 
     def _find_params(self, num_truths, num_samples, num_folds=3) -> tuple:

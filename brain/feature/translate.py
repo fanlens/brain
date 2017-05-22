@@ -5,6 +5,7 @@ import typing
 import numpy
 from google.cloud import translate as google_translate
 from sklearn.base import TransformerMixin
+import html
 
 
 def translate(text: typing.Union[typing.AnyStr, typing.List[typing.AnyStr]], target_language='en', short_output=True):
@@ -17,7 +18,7 @@ def translate(text: typing.Union[typing.AnyStr, typing.List[typing.AnyStr]], tar
         head_only = True
 
     if short_output:
-        output = [translation.get('translatedText') for translation in translations]
+        output = [html.unescape(translation.get('translatedText', '')) for translation in translations]
     else:
         output = translations
     if len(output) == 0:
