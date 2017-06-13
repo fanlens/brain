@@ -22,7 +22,8 @@ setup(
         'nltk',
         'sqlalchemy',
         'google-cloud-translate',
-        'python-dateutil'
+        'mstranslator',
+        'python-dateutil',
     ],
     package_data={'fl-brain.nltk_data': ['*']}
 )
