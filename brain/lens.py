@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """a module for tagging texts based on semi supervised methods"""
+import os
 import logging
 import operator
 import pickle
@@ -11,6 +12,7 @@ from collections import defaultdict
 
 import numpy
 import scipy.stats
+from config.env import Environment
 from brain.feature.capitalization import CapitalizationTransformer
 from brain.feature.emoji import EmojiTransformer
 from brain.feature.field_extract import FieldExtractTransformer
@@ -20,7 +22,7 @@ from brain.feature.punctuation import PunctuationTransformer
 from brain.feature.timeofday import TimeOfDayTransformer
 from db import DB
 from db.models.activities import TagSet, Source
-from db.models.brain import Model, ModelFile
+from db.models.brain import Model
 from sklearn.decomposition import TruncatedSVD
 from sklearn.externals.joblib import Parallel, delayed
 from sklearn.feature_extraction import FeatureHasher
@@ -30,6 +32,11 @@ from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
 from sklearn.preprocessing import Normalizer
 from sklearn.semi_supervised import LabelSpreading
 from sqlalchemy import text
+
+model_file_root = Environment('BRAIN')['modelfilepath']
+
+def model_file_path(name):
+    return os.path.join(model_file_root, str(name))
 
 _random_sample = text('''
   WITH tagged AS (
@@ -72,17 +79,8 @@ def ntuples(lst, n):
 class Lens(object):
     @classmethod
     def load_from_id(cls, model_id: uuid.UUID):
-        with DB().ctx() as session:
-            model = session.query(Model).get(str(model_id))
-            try:
-                return model and cls.load_from_model(model)
-            finally:
-                session.expunge(model.file)
-
-    @classmethod
-    def load_from_model(cls, model: Model):
-        bag = pickle.loads(model.file.file)
-        return cls(model, bag)
+        with open(model_file_path(model_id), 'rb') as model_file:
+            return pickle.load(model_file)
 
     def __init__(self, model: Model, estimator_bag: typing.List[Pipeline]):
         self._estimator_bag = estimator_bag
@@ -259,11 +257,11 @@ class LensTrainer(object):
         return Lens(model, bag)
 
     def persist(self, lens: Lens, session):
-        logging.debug('persisting trained model...')
-        lens.model.file = ModelFile(model_id=lens.model.id,
-                                        file=pickle.dumps(lens.estimator_bag, protocol=pickle.HIGHEST_PROTOCOL))
+        logging.debug('persisting trained model at...')
         session.add(lens.model)
         session.commit()
+        with open(model_file_path(lens.model.id), 'wb') as model_file:
+            pickle.dump(lens.estimator_bag, model_file, protocol=pickle.HIGHEST_PROTOCOL)
         logging.debug('... done persisting trained model, new id is: %s' % lens.model.id)
         return lens.model.id
 
