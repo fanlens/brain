@@ -79,8 +79,11 @@ def ntuples(lst, n):
 class Lens(object):
     @classmethod
     def load_from_id(cls, model_id: uuid.UUID):
+        with DB().ctx() as session:
+            model = session.query(Model).get(model_id)
         with open(model_file_path(model_id), 'rb') as model_file:
-            return pickle.load(model_file)
+            estimator_bag = pickle.load(model_file)
+        return model and estimator_bag and Lens(model, estimator_bag)
 
     def __init__(self, model: Model, estimator_bag: typing.List[Pipeline]):
         self._estimator_bag = estimator_bag
