@@ -21,7 +21,7 @@ from brain.feature.lemma_tokenizer import LemmaTokenTransformer
 from brain.feature.punctuation import PunctuationTransformer
 from brain.feature.timeofday import TimeOfDayTransformer
 from db import DB
-from db.models.activities import TagSet, Source
+from db.models.activities import TagSet, Source, User
 from db.models.brain import Model
 from sklearn.decomposition import TruncatedSVD
 from sklearn.externals.joblib import Parallel, delayed
@@ -144,7 +144,7 @@ class LensTrainer(object):
 
     def __init__(self, tagset: TagSet, sources: typing.Iterable[Source] = list(), progress=None):
         assert tagset and sources
-        assert all(source.user.id == tagset.user.id for source in sources)
+        assert all(source.users.filter_by(id=tagset.user.id).one_or_none() for source in sources)
         self._tagset = tagset
         self._sources = sources
         self._progress = progress
@@ -253,7 +253,8 @@ class LensTrainer(object):
 
         bag = Parallel(n_jobs=-1)(
             delayed(self._train_stub)(params, num_truths, num_samples, i) for i in range(0, n_estimators))
-        model = Model(tagset_id=self._tagset.id, user_id=self._tagset.user.id, params=params, score=score)
+        model = Model(tagset_id=self._tagset.id,  params=params, score=score)
+        model.users.append(self._tagset.user)
         for source in self._sources:
             model.sources.append(source)
         logging.debug('... done training estimator bag')
