@@ -142,11 +142,13 @@ class LensTrainer(object):
         'clf__kernel': ['knn', 'rbf'],
     }
 
-    def __init__(self, tagset: TagSet, sources: typing.Iterable[Source] = list(), progress=None):
+    def __init__(self, user: User, tagset: TagSet, sources: typing.Iterable[Source], progress=None):
         assert tagset and sources
-        assert all(source.users.filter_by(id=tagset.user.id).one_or_none() for source in sources)
+        assert tagset.user.filter_by(id=user.id).one_or_none()
+        assert all(source.users.filter_by(id=user.id).one_or_none() for source in sources)
         self._tagset = tagset
         self._sources = sources
+        self._user = user
         self._progress = progress
 
     @staticmethod
@@ -253,8 +255,8 @@ class LensTrainer(object):
 
         bag = Parallel(n_jobs=-1)(
             delayed(self._train_stub)(params, num_truths, num_samples, i) for i in range(0, n_estimators))
-        model = Model(tagset_id=self._tagset.id,  params=params, score=score)
-        model.users.append(self._tagset.user)
+        model = Model(tagset_id=self._tagset.id, created_by_user_id=self._user.id, params=params, score=score)
+        model.users.append(self._user)
         for source in self._sources:
             model.sources.append(source)
         logging.debug('... done training estimator bag')
