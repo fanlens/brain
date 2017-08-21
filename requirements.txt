@@ -1,1 +1,0 @@
--e 'git+https://fanlens-deploy-1:KcZyjbdE62xFqiZWxufEaD9iiVoNVdnxDjrKEVcpTiLEbmQ8nsMZR4pYnNEKiYwt@bitbucket.org/fanlens/brain.git#egg=fl-base'
