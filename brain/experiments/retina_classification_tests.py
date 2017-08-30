@@ -10,7 +10,7 @@ from sklearn import metrics
 from sklearn.svm import LinearSVC
 from sklearn.cross_validation import train_test_split
 
-from db import DB
+from db import get_session
 from tools.facebook_retina_top import FacebookRetinaEntry
 from config.db import Config
 from config.env import Environment
@@ -22,7 +22,7 @@ PICKLE_FILE_PATH = os.path.join(SETTINGS['model_dir'], 'retina_page_classifier.p
 def train():
     print('fetch and prepare data...')
     xs, ys, ts = [], [], []
-    with DB().ctx() as session:
+    with get_session() as session:
         for entry in session.query(FacebookRetinaEntry):
             sample_retina = np.zeros(128 * 128, dtype=int)
             sample_retina[entry.data['retina']] = 1

@@ -7,14 +7,14 @@ from PIL import Image
 
 from sklearn.cluster import KMeans
 
-from db import DB
+from db import get_session
 from tools.facebook_retina_top import FacebookRetinaEntry
 
 print('fetch and prepare data...')
 
 retina = np.zeros((128, 128), dtype=float)
 # X, T = [], []
-with DB().ctx() as session:
+with get_session() as session:
     for entry in session.query(FacebookRetinaEntry).filter(FacebookRetinaEntry.slug == 'ladygaga'):
         sample_retina = np.zeros((128, 128), dtype=int)
         for pos in entry.data['retina']:
