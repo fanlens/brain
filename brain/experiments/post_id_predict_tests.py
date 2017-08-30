@@ -13,7 +13,7 @@ from sklearn.pipeline import Pipeline
 
 from brain.feature.language_detect import is_english
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
-from db import DB
+from db import get_session
 
 PostReaction = namedtuple('PostReaction', ['post_id', 'type', 'rank', 'count', 'texts'])
 
@@ -25,7 +25,7 @@ tokenizer = LemmaTokenTransformer(short_url=True)
 meta_key, force = 'agglo', False
 if not r.exists(meta_key) or force:
     r.delete(meta_key)
-    with DB().ctx() as session:
+    with get_session() as session:
         top_reactions = session.execute("""
     select agg.post_id, agg.type, agg.r, agg.c, array_agg(comments.comment::jsonb->>'message') as text from (
       select post_id, type, dense_rank() over (partition by post_id order by count(type) desc) as r, count(*) as c

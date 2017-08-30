@@ -20,7 +20,7 @@ from brain.feature.fingerprint import SparseFingerprintTransformer
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
 from brain.feature.punctuation import PunctuationTransformer
 from brain.feature.timeofday import TimeOfDayTransformer
-from db import DB
+from db import get_session
 from db.models.activities import TagSet, Source, User
 from db.models.brain import Model
 from sklearn.decomposition import TruncatedSVD
@@ -79,7 +79,7 @@ def ntuples(lst, n):
 class Lens(object):
     @classmethod
     def load_from_id(cls, model_id: uuid.UUID):
-        with DB().ctx() as session:
+        with get_session() as session:
             model = session.query(Model).get(model_id)
         with open(model_file_path(model_id), 'rb') as model_file:
             estimator_bag = pickle.load(model_file)
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     #     ys_test, xs_test = zip(*pickle.load(testsetfile))
     #     num_test = len(ys_test)
 
-    with DB().ctx() as session:
+    with get_session() as session:
         # tagset = session.query(TagSet).get(1)
         # sources = session.query(Source).filter(Source.id.in_((2,))).all()
         # factory = LensTrainer(tagset, sources)

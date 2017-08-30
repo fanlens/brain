@@ -10,23 +10,21 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MultiLabelBinarizer
 
-from db import DB, Session
+from db import get_session, Session
 
 split_AXY = []
-with DB().ctx() as session:
-    session = session  # type: Session
+with get_session() as session:  # type: Session
     categories_with_text = session.execute("""
-select ab.article, array_agg(ct.category), first_value(ab.abstract) over (partition by ab.article)
-from dbpedia_article_abstracts as ab, dbpedia_article_categories as ct
-where ab.article = ct.article and ab.article in (
-    select article from dbpedia_article_categories
-    where category in ('Formula_One', 'Sports_cars', 'Sports_car_manufacturers' ))
-group by ab.article
+SELECT ab.article, array_agg(ct.category), first_value(ab.abstract) OVER (PARTITION BY ab.article)
+FROM dbpedia_article_abstracts AS ab, dbpedia_article_categories AS ct
+WHERE ab.article = ct.article AND ab.article IN (
+    SELECT article FROM dbpedia_article_categories
+    WHERE category IN ('Formula_One', 'Sports_cars', 'Sports_car_manufacturers' ))
+GROUP BY ab.article
     """)
     for a, y, x in categories_with_text:
         for line in x.split("\n"):
             split_AXY.append((a, y, line.strip()))
-
 
 A, Y, X = map(np.array, zip(*split_AXY))
 print(X)

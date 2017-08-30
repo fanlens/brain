@@ -18,7 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MultiLabelBinarizer
 
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
-from db import DB
+from db import get_session
 
 
 class Reaction(enum.Enum):
@@ -37,7 +37,7 @@ force = False
 
 r = redis.StrictRedis(host='localhost', port=6379, db=0)
 if page not in r or force:
-    with DB().ctx() as session:
+    with get_session() as session:
         print('filling cache')
         r.delete(page)
         r.rpush(page, *list(map(pickle.dumps, session.execute("""
