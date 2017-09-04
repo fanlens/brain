@@ -6,7 +6,7 @@ from lib.alchemy.alchemyapi import AlchemyAPI
 
 from config.db import Config
 
-from db import DB, Session
+from db import get_session, Session
 
 
 class AlchemyApiMem(AlchemyAPI):
@@ -18,7 +18,7 @@ class AlchemyApiMem(AlchemyAPI):
 config = Config("alchemyapi")
 
 # post_with_comments = {}
-# with DB().ctx() as session:
+# with get_session() as session:
 #     for post_id, comments in session.execute("""
 # select post_id, array_agg(comment::jsonb->>'message')
 # from facebook_comments

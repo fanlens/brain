@@ -13,7 +13,7 @@ from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.pipeline import Pipeline
 
 from brain.feature.lemma_tokenizer import LemmaTokenTransformer
-from db import DB, Session
+from db import get_session, Session
 
 
 class Reaction(enum.Enum):
@@ -27,8 +27,7 @@ class Reaction(enum.Enum):
 PostReaction = namedtuple('Reaction', ['post_id', 'type', 'rank', 'count', 'text'])
 
 XY = {}
-with DB().ctx() as session:
-    session = session  # type: Session
+with get_session() as session:  # type: Session
     top_reactions = session.execute("""
 select agg.post_id, agg.type, agg.r, agg.c, array_agg(comments.comment::jsonb->>'message') as text from (
   select post_id, type, dense_rank() over (partition by post_id order by count(type) desc) as r, count(*) as c
@@ -55,13 +54,15 @@ Y, X = map(np.array, zip(*flat_XY))
 tokenizer = LemmaTokenTransformer()
 classifier = Pipeline([
     ('vectorizer',
-     #the experience in Information Retrieval (Salton's Vector Space Model) is that those terms ocurring between 1% and 10% of the documents are the most discriminative ones, that is, the ones that help best to separate the space of documents.
-     CountVectorizer(analyzer='word', ngram_range=(1, 1), tokenizer=tokenizer, stop_words='english', min_df=0.01, max_df=0.1)),
+     # the experience in Information Retrieval (Salton's Vector Space Model) is that those terms ocurring between 1% and 10% of the documents are the most discriminative ones, that is, the ones that help best to separate the space of documents.
+     CountVectorizer(analyzer='word', ngram_range=(1, 1), tokenizer=tokenizer, stop_words='english', min_df=0.01,
+                     max_df=0.1)),
     ('tfidf', TfidfTransformer(use_idf=True, smooth_idf=True)),
     ('clf', Birch(branching_factor=150, n_clusters=None, threshold=0.7, compute_labels=True)),
 ])
 
 from nltk.corpus import stopwords
+
 stops = set(stopwords.words('english'))
 
 classifier.fit(X)
@@ -89,4 +90,3 @@ for lbl, histo in histos.items():
     for txt, val in histo.items():
         if val / max_val > 0.8:
             print(txt, '\t', val / max_val * 100)
-
