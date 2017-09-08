@@ -199,7 +199,7 @@ class LensTrainer(object):
 
     def _fetch_samples(self, num_truths: int, num_samples: int):
         logging.debug("fetching sampleset with %d truths and %d samples..." % (num_truths, num_samples))
-        with DB().ctx() as session:
+        with get_session() as session:
             query = session.execute(_random_sample,
                                     dict(tagset_id=self._tagset.id,
                                          num_samples=num_samples,
