@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import warnings
 import typing
 
 import numpy
-import html
-from config.db import Config
 from sklearn.base import TransformerMixin
 from mstranslator import Translator
 
+_key = None
 
-_key = Config("azure")["translator"]
 
 def translate(text: typing.Union[typing.AnyStr, typing.List[typing.AnyStr]], target_language='en', short_output=True):
+    warnings.warn("Azure is not used as translation service anymore", DeprecationWarning, stacklevel=2)
     if not isinstance(text, list):
         text = [text]
     # todo: reuse enum from language_detect
@@ -26,6 +26,7 @@ def translate(text: typing.Union[typing.AnyStr, typing.List[typing.AnyStr]], tar
 class TranslationTransformer(TransformerMixin):
     def __init__(self, target_language='en'):
         self._target_language = target_language
+        warnings.warn("Azure is not used as translation service anymore", DeprecationWarning, stacklevel=2)
 
     def transform(self, X: typing.List[typing.AnyStr], y=None, **transform_params):
         return translate(X, target_language=self._target_language)
