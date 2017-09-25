@@ -5,9 +5,9 @@ import retinasdk
 
 from scipy.sparse import lil_matrix
 from sklearn.base import TransformerMixin
-from config.db import Config
+from config import get_config
 
-retina = retinasdk.FullClient(Config("cortical")["api_key"])
+retina = retinasdk.FullClient(get_config().get("CORTICAL", "api_key"))
 
 
 def get_fingerprints(texts):

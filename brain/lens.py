@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import numpy
 import scipy.stats
-from config.env import Environment
+from config import get_config
 from brain.feature.capitalization import CapitalizationTransformer
 from brain.feature.emoji import EmojiTransformer
 from brain.feature.field_extract import FieldExtractTransformer
@@ -33,10 +33,13 @@ from sklearn.preprocessing import Normalizer
 from sklearn.semi_supervised import LabelSpreading
 from sqlalchemy import text
 
-model_file_root = Environment('BRAIN')['modelfilepath']
+_config = get_config()
+model_file_root = _config.get('BRAIN', 'modelfilepath')
+
 
 def model_file_path(name):
     return os.path.join(model_file_root, str(name))
+
 
 _random_sample = text('''
   WITH tagged AS (
@@ -358,4 +361,4 @@ if __name__ == "__main__":
                    in session.query(Data).join(Tagging, Tagging.data_id == Data.id).filter(Tagging.tag_id == 300)]
         ys_pred = list(lens.predict_proba(xs_test))
         num_right = sum([1 if y == 300 else 0 for y, _ in ys_pred])
-        print(num_right, 'right predictions', num_right/len(ys_pred)*100, '%')
+        print(num_right, 'right predictions', num_right / len(ys_pred) * 100, '%')
