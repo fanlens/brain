@@ -16,9 +16,11 @@ _language_translator = LanguageTranslatorV2(
     username=_config.get('WATSON', 'username'),
     password=_config.get('WATSON', 'password'))
 
-_identifiable_languages = {Lang[lang_str_obj['language']] for lang_str_obj in
-                           _language_translator.get_identifiable_languages().get('languages', [])
-                           if lang_str_obj['language'] in Lang.__members__}
+# todo: only limited set of languages for now
+# _identifiable_languages = {Lang[lang_str_obj['language']] for lang_str_obj in
+#                            _language_translator.get_identifiable_languages().get('languages', [])
+#                            if lang_str_obj['language'] in Lang.__members__}
+_identifiable_language = {Lang.de, Lang.es}
 
 
 def translate(texts: Union[str, List[str]],
