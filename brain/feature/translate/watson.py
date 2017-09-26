@@ -20,7 +20,7 @@ _language_translator = LanguageTranslatorV2(
 # _identifiable_languages = {Lang[lang_str_obj['language']] for lang_str_obj in
 #                            _language_translator.get_identifiable_languages().get('languages', [])
 #                            if lang_str_obj['language'] in Lang.__members__}
-_identifiable_language = {Lang.de, Lang.es}
+_identifiable_languages = {Lang.de, Lang.es}
 
 
 def translate(texts: Union[str, List[str]],
