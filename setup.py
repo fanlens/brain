@@ -24,6 +24,7 @@ setup(
         'sqlalchemy',
         'google-cloud-translate',
         'mstranslator',
+        'watson-developer-cloud',
         'python-dateutil',
     ]
 )
