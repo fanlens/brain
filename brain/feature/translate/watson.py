@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """Watson translation implementation"""
 from collections import defaultdict
-from typing import Union, List, Optional, Dict, Tuple, Iterator  # type hint in comment pylint: disable=unused-import
+from typing import Union, List, Optional, Dict, Tuple, Iterator
 
 from watson_developer_cloud import LanguageTranslatorV2
 
-from config import get_config
-from db.models.activities import Lang
+from common.config import get_config
+from common.db.models.activities import Lang
 from ..language_detect import language_detect
 
 _CONFIG = get_config(max_depth=3)
@@ -48,19 +48,21 @@ def translate(texts: Union[str, List[str]],
 
     # group the texts into batches keyed by their source language
     # this is done because the watson api only allows a scalar value for the source language but mutliple texts
-    grouped = defaultdict(list)  # type: Dict[Lang, List[Tuple[int, Optional[str]]]]
+    grouped: Dict[Lang, List[Tuple[int, Optional[str]]]] = defaultdict(list)
     for orig_idx, (text, source_language) in enumerate(zip(texts, source_languages)):
         grouped[source_language].append((orig_idx, text))
 
     # translate all texts and add the keyed translations into an unsorted list
-    unsorted_translations = []  # type: List[Tuple[int, Optional[str]]]
+    unsorted_translations: List[Tuple[int, Optional[str]]] = []
     for source_language in grouped.keys():
         language_group = grouped[source_language]
 
         if source_language == target_language:
             group_translations_with_idx = language_group
         else:
-            group_orig_idxs, group_texts = zip(*language_group)  # type: Iterator[int], Iterator[str]
+            group_orig_idxs: Iterator[int]
+            group_texts: Iterator[str]
+            group_orig_idxs, group_texts = zip(*language_group)
             if source_language in _IDENTIFIABLE_LANGUAGES:
                 # the default method only allows for one text it seems
                 group_translations = _LANGUAGE_TRANSLATOR.request(method='POST',

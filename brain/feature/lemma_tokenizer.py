@@ -11,7 +11,7 @@ from nltk import WordNetLemmatizer, pos_tag, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.base import TransformerMixin
 
-from utils.compose import compose
+from common.utils.compose import compose
 from . import output, TOutput, TOutputType, to_output_type
 
 _URLS_REG = re.compile(r"(?:(http|ftp|https)://)?([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?")
