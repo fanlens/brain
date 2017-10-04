@@ -1,63 +1,124 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Transformer and tools to convert texts into their fingerprints. A fingerprint is a list of indexes in a 256*256 space
+"""
+from typing import Iterable, List, Optional, Any, Dict, cast
+
 import numpy
 import retinasdk
-
-from scipy.sparse import lil_matrix
+from retinasdk.model.fingerprint import Fingerprint as CorticalFingerprint
+from scipy.sparse import lil_matrix, spmatrix
 from sklearn.base import TransformerMixin
+
 from config import get_config
 
-retina = retinasdk.FullClient(get_config().get("CORTICAL", "api_key"))
+TFingerprint = List[int]
+
+_RETINA = retinasdk.FullClient(get_config().get("CORTICAL", "api_key"))
 
 
-def get_fingerprints(texts):
-    return retina.getFingerprintsForTexts(texts)
+def _to_fingerprint(fingerprint: CorticalFingerprint) -> TFingerprint:
+    positions = fingerprint.positions
+    assert isinstance(positions, list)
+    assert all(isinstance(idx, int) for idx in positions)
+    return cast(TFingerprint, positions)
 
 
-def get_fingerprint(text):
-    return retina.getFingerprintForText(text)
+def get_fingerprints(texts: Iterable[str]) -> Iterable[TFingerprint]:
+    """
+    Get fingerprints for a batch of texts.
+    :param texts: text batch
+    :return: list of fingerprints
+    """
+    return map(_to_fingerprint, _RETINA.getFingerprintsForTexts(texts))
 
 
-def unpack_fingerprint(sample):
+def get_fingerprint(text: str) -> TFingerprint:
+    """
+    Get fingerprint for text.
+    :param text: the text
+    :return: the fingerprint
+    """
+    return _to_fingerprint(_RETINA.getFingerprintForText(text))
+
+
+def unpack_fingerprint(fingerprint: TFingerprint) -> numpy.ndarray:
+    """
+    Transform a fingerprint (list of indexes) into a dense numpy array.
+    :param fingerprint: index list
+    :return: dense numpy array
+    """
     sample_1d = numpy.zeros(128 * 128, dtype=numpy.float64)
-    sample_1d[numpy.array(sample, dtype=numpy.uint16)] = 1.0
+    sample_1d[numpy.array(fingerprint, dtype=numpy.uint16)] = 1.0
     return sample_1d
 
 
-def sparsify_fingerprint(sample):
+def sparsify_fingerprint(fingerprint: TFingerprint) -> spmatrix:
+    """
+    Transform a fingerprint (list of indexes) into a sparse numpy array.
+    :param fingerprint: index list
+    :return: sparse numpy array
+    """
     sparse = lil_matrix((1, 128 * 128), dtype=numpy.float64)
-    sparse[0, sample] = 1.0
+    sparse[0, fingerprint] = 1.0
     return sparse
 
 
 class DenseFingerprintTransformer(TransformerMixin):
-    _vecfun = numpy.vectorize(unpack_fingerprint)
+    # match signatures, pylint: disable=unused-argument, no-self-use
+    """Transform list of fingerprints into dense numpy arrays"""
 
-    def transform(self, X: numpy.array, y=None, **transform_params):
+    def transform(self, X: Iterable[TFingerprint], y: Optional[numpy.ndarray] = None,
+                  **transform_params: Any) -> numpy.ndarray:
+        """
+        :param X: source of fingerprints
+        :param y: unused
+        :param transform_params: unused
+        :return: a numpy array containing the densely unpacked fingerprints
+        """
         return numpy.array([unpack_fingerprint(x) for x in X], dtype=numpy.float64)
 
-    def fit(self, X: numpy.array, y=None, **fit_params):
+    def fit(self, X: Iterable[TFingerprint], y: Optional[numpy.ndarray] = None,
+            **fit_params: Any) -> 'DenseFingerprintTransformer':
+        """unused"""
         return self
 
-    def get_params(self, deep=False):
+    def get_params(self, deep: bool = False) -> Dict[None, None]:
+        """unused"""
         return {}
 
-    def set_params(self, **_):
+    def set_params(self, **_: Any) -> None:
+        """unused"""
         pass
 
 
 class SparseFingerprintTransformer(TransformerMixin):
-    def transform(self, X, y=None, **transform_params):
-        sparse = lil_matrix((len(X), 128 * 128), dtype=numpy.float64)
+    # match signatures, pylint: disable=unused-argument, no-self-use
+    """Transform list of fingerprints into sparse numpy arrays"""
+
+    def transform(self, X: Iterable[TFingerprint], y: Optional[numpy.ndarray] = None,
+                  **transform_params: Any) -> spmatrix:
+        """
+        :param X: source of fingerprints
+        :param y: unused
+        :param transform_params: unused
+        :return: a numpy array containing the sparsely unpacked fingerprints
+        """
+        sparse = lil_matrix((len(list(X)), 128 * 128), dtype=numpy.float64)
         for idx, x in enumerate(X):
             sparse[idx, x] = 1.0
         return sparse
 
-    def fit(self, X: numpy.array, y=None, **fit_params):
+    def fit(self, X: Iterable[TFingerprint], y: Optional[numpy.ndarray] = None,
+            **fit_params: Any) -> 'SparseFingerprintTransformer':
+        """unused"""
         return self
 
-    def get_params(self, deep=False):
+    def get_params(self, deep: bool = False) -> Dict[None, None]:
+        """unused"""
         return {}
 
-    def set_params(self, **_):
+    def set_params(self, **_: Any) -> None:
+        """unused"""
         pass

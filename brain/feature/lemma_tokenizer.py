@@ -4,30 +4,46 @@
 
 import functools
 import re
-import typing
+from typing import Iterable, Optional, Any, Union, Dict, Tuple
 
-from brain.feature import output
+import numpy as np
 from nltk import WordNetLemmatizer, pos_tag, word_tokenize
 from nltk.corpus import stopwords
 from sklearn.base import TransformerMixin
 
-_ident = lambda _: _
-_urls_reg = re.compile(r"(?:(http|ftp|https)://)?([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?")
-_word_reg = re.compile(r"^[\w\d]+$")
+from utils.compose import compose
+from . import output, TOutput, TOutputType, to_output_type
 
-_stops = set(stopwords.words('english'))
-_wnl = WordNetLemmatizer()
+_URLS_REG = re.compile(r"(?:(http|ftp|https)://)?([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?")
+_WORD_REG = re.compile(r"^[\w\d]+$")
+
+_STOPS = set(stopwords.words('english'))
+_WORD_NET_LEMMATIZER = WordNetLemmatizer()
 
 
-def compose(*functions):
-    """convenience function to chain transformations"""
-    return functools.reduce(lambda f, g: lambda x: f(g(x)), reversed(functions), lambda x: x)
+def lemmatize(tokens: Iterable[Tuple[str, str]]) -> Iterable[str]:
+    """
+    Lemmatize the pos tagged sequence
+    :param tokens: pos tagged sequence
+    :return: lemmatized sequence
+    """
+    return [_WORD_NET_LEMMATIZER.lemmatize(w).lower() for w, t in tokens if t[:2] in ('NN', 'VB', 'JJ', 'RB')]
+
+
+def stop(tokens: Iterable[str]) -> Iterable[str]:
+    """
+    Filter stop words from word tokens
+    :param tokens: source of words
+    :return: smaller list with stop words removed
+    """
+    return [t for t in tokens if t not in _STOPS]
 
 
 class LemmaTokenTransformer(TransformerMixin):
+    # match signatures, pylint: disable=unused-argument
     """tokenize based on lemmas"""
 
-    def __init__(self, pass_through=False, short_url=False, output_type: typing.Union[list, str, dict] = dict):
+    def __init__(self, pass_through: bool = False, short_url: bool = False, output_type: TOutputType = dict) -> None:
         """
         :param pass_through: perform simple split on whitespace
         :param short_url: remove scheme and path from url only leaving domain
@@ -37,27 +53,33 @@ class LemmaTokenTransformer(TransformerMixin):
         self._output_type = output_type
         self._pass_through = pass_through
 
-    def transform(self, X: typing.List[typing.AnyStr], y=None, **transform_params):
+    def transform(self, X: Iterable[str], y: Optional[np.ndarray] = None, **transform_params: Any) -> Iterable[TOutput]:
+        """
+        :param X: List of text samples to transform
+        :param y: unused
+        :param transform_params: unused
+        :return: lemmatized strings in output format specified
+        """
         return [self(x) for x in X]
 
-    def fit(self, X: typing.List[typing.AnyStr], y=None, **fit_params):
+    def fit(self, X: Iterable[str], y: Optional[np.ndarray] = None, **fit_params: Any) -> 'LemmaTokenTransformer':
+        """unused"""
         return self
 
-    def get_params(self, deep=False):
+    def get_params(self, deep: bool = False) -> Dict[str, Union[bool, TOutputType]]:
+        """Get parameters for this Transformer."""
         return dict(short_url=self._short_url, output_type=self._output_type)
 
-    def set_params(self, **params):
-        self._short_url = params.get('short_url', self._short_url)
-        self._output_type = params.get('output_type', self._output_type)
+    def set_params(self, **params: Union[bool, TOutputType]) -> None:
+        """Set parameters for this Transformer."""
+        short_url = params.get('short_url', self._short_url)
+        assert isinstance(short_url, bool)
+        self._short_url = short_url
 
-    def _lemmatize(self, tokens: list) -> list:
-        return [_wnl.lemmatize(w).lower() for w, t in tokens if t[:2] in ('NN', 'VB', 'JJ', 'RB')]
+        self._output_type = to_output_type(params.get('output_type', self._output_type))
 
-    def _stop(self, tokens: list) -> list:
-        return [t for t in tokens if t not in _stops]
-
-    def __call__(self, doc):
-        urls = _urls_reg.findall(doc)
+    def __call__(self, doc: str) -> TOutput:
+        urls = _URLS_REG.findall(doc)
         if self._short_url:
             urls = [main for _, main, _ in urls]
         else:
@@ -66,22 +88,22 @@ class LemmaTokenTransformer(TransformerMixin):
             tokenized = doc.split()
         else:
             tokenized = compose(
-                functools.partial(_urls_reg.sub, ' '),
+                functools.partial(_URLS_REG.sub, ' '),
                 word_tokenize,
-                functools.partial(filter, _word_reg.match),
-                self._stop,
+                functools.partial(filter, _WORD_REG.match),
+                stop,
                 pos_tag,
-                self._lemmatize,
+                lemmatize,
                 lambda res: res + urls
             )(doc)
         return output(self._output_type, tokenized)
 
 
 if __name__ == "__main__":
-    tokenizer = LemmaTokenTransformer(pass_through=False)
-    tokens = tokenizer.fit_transform([
+    _TOKENIZER = LemmaTokenTransformer(pass_through=False)
+    _TOKENS = _TOKENIZER.fit_transform([
         """To add overloaded implementations to the function, use the register() attribute of the
         generic function. It is a decorator, taking a type parameter and decorating a function implementing the
         operation for that type"""
     ])
-    print(tokens)
+    print(_TOKENS)
