@@ -24,18 +24,18 @@ from sklearn.semi_supervised import LabelSpreading
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from brain.feature.capitalization import CapitalizationTransformer
-from brain.feature.emoji import EmojiTransformer
-from brain.feature.field_extract import FieldExtractTransformer
-from brain.feature.fingerprint import SparseFingerprintTransformer, TFingerprint
-from brain.feature.lemma_tokenizer import LemmaTokenTransformer
-from brain.feature.punctuation import PunctuationTransformer
-from brain.feature.timeofday import TimeOfDayTransformer
-from config import get_config
-from db import get_session
-from db.models.activities import TagSet, Source, User
-from db.models.brain import Model
-from utils.progress import ProgressCallbackBase
+from common.config import get_config
+from common.db import get_session
+from common.db.models.activities import TagSet, Source, User
+from common.db.models.brain import Model
+from common.utils.progress import ProgressCallbackBase
+from .feature.capitalization import CapitalizationTransformer
+from .feature.emoji import EmojiTransformer
+from .feature.field_extract import FieldExtractTransformer
+from .feature.fingerprint import SparseFingerprintTransformer, TFingerprint
+from .feature.lemma_tokenizer import LemmaTokenTransformer
+from .feature.punctuation import PunctuationTransformer
+from .feature.timeofday import TimeOfDayTransformer
 
 TPrediction = NewType('TPrediction', int)
 ScoredPrediction = NamedTuple('ScoredPrediction', [('tag_id', int), ('score', float)])
@@ -117,9 +117,9 @@ class Lens(object):
         :raises RuntimeError: if the model could not be loaded
         """
         with get_session() as session:
-            model = session.query(Model).get(model_id)  # type: Model
+            model: Model = session.query(Model).get(model_id)
 
-        estimator_bag = []  # type: TEstimatorBag
+        estimator_bag: TEstimatorBag = []
         try:
             with open(model_file_path(model_id), 'rb') as model_file:
                 estimator_bag = pickle.load(model_file)

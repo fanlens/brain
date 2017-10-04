@@ -6,8 +6,8 @@ from typing import Union, List, Optional, Any, Iterable, Dict, Callable, cast
 import numpy as np
 from sklearn.base import TransformerMixin
 
-from config import get_config
-from db.models.activities import Lang
+from common.config import get_config
+from common.db.models.activities import Lang
 
 _CONFIG = get_config(max_depth=3)
 TRANSLATION_IMPLEMENTATION = _CONFIG.get('BRAIN', 'translation_implementation')

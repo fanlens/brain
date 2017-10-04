@@ -11,7 +11,7 @@ from retinasdk.model.fingerprint import Fingerprint as CorticalFingerprint
 from scipy.sparse import lil_matrix, spmatrix
 from sklearn.base import TransformerMixin
 
-from config import get_config
+from common.config import get_config
 
 TFingerprint = List[int]
 

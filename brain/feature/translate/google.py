@@ -7,15 +7,15 @@ from typing import Union, List
 
 from google.cloud import translate as google_translate  # false positive, setup.py pylint: disable=no-name-in-module
 
-from db.models.activities import Lang
+from common.db.models.activities import Lang
 
 
 def translate(texts: Union[str, List[str]], target_language: Lang = Lang.en, short_output: bool = True) -> List[str]:
     """Google translation implementation, see `brain.feature.translate`"""
     warnings.warn("Google is not used as translation service anymore", DeprecationWarning, stacklevel=2)
     translate_client = google_translate.Client()
-    response = translate_client.translate(texts, target_language=target_language.name)  # type: Union[List[dict], dict]
-    translations = []  # type: List[dict]
+    response: Union[List[dict], dict] = translate_client.translate(texts, target_language=target_language.name)
+    translations: List[dict] = []
     if not isinstance(response, list):
         translations.append(response)
     else:

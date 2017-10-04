@@ -13,7 +13,7 @@ def _output_str(xs: Iterable[str]) -> str:
 
 
 def _output_dict(xs: Iterable[str]) -> Dict[str, int]:
-    output_dict = DefaultDict(int)  # type: DefaultDict[str, int]
+    output_dict = DefaultDict[str, int](int)
     for x in xs:
         output_dict[x] += 1
     return output_dict
