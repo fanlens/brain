@@ -9,7 +9,7 @@ import os
 import pickle
 import random
 import uuid
-from typing import NamedTuple, NewType, List, Iterable, Union, Any, Dict, Optional, DefaultDict, Tuple, cast
+from typing import Any, DefaultDict, Dict, Iterable, List, NamedTuple, NewType, Optional, Tuple, Union, cast
 
 import numpy
 import scipy.stats
@@ -18,7 +18,7 @@ from sklearn.externals.joblib import Parallel, delayed
 from sklearn.feature_extraction import FeatureHasher
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.grid_search import RandomizedSearchCV
-from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
+from sklearn.pipeline import FeatureUnion, Pipeline, make_pipeline
 from sklearn.preprocessing import Normalizer
 from sklearn.semi_supervised import LabelSpreading
 from sqlalchemy import text
@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from common.config import get_config
 from common.db import get_session
-from common.db.models.activities import TagSet, Source, User
+from common.db.models.activities import Source, TagSet, User
 from common.db.models.brain import Model
 from common.utils.progress import ProgressCallbackBase
 from .feature.capitalization import CapitalizationTransformer
