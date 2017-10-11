@@ -1,0 +1,5 @@
+Machine Learning/Feature Extraction package for Fanlens.
+
+Is using NTLK packages.
+An archive can be downloaded here: https://www.dropbox.com/s/gips83r6m6zcsfg/nltk_data.tgz?dl=1
+copy the extracted "nltk_data" directory to ./brain/brain/nltk_data
