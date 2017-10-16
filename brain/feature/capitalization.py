@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Module for a capitalization based tokenizer"""
 
 import re

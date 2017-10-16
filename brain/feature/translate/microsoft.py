@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Microsoft translation implementation"""
 import warnings
 from typing import Union, List

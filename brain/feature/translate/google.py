@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Google translation implementation"""
 import html
 import warnings

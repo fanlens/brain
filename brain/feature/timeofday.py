@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """module for a lemma based tokenizer"""
 
 import datetime

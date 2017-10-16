@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """a module for tagging texts based on semi supervised methods"""
 import datetime
 import logging
