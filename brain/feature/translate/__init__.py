@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Translation transformers with configurable translation engine"""
 from typing import Union, List, Optional, Any, Iterable, Dict, Callable, cast
 

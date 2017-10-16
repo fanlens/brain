@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Home to different feature extraction modules"""
 from typing import Iterable, List, Dict, Union, Type, DefaultDict, Any, cast
 

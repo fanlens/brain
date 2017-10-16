@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Watson translation implementation"""
 from collections import defaultdict
 from typing import Union, List, Optional, Dict, Tuple, Iterator

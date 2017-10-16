@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Transformer and tools to convert texts into their fingerprints. A fingerprint is a list of indexes in a 256*256 space
 """

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Transform sparse matrices into dense matrices."""
 from typing import Optional, Any, Dict
 import numpy as np

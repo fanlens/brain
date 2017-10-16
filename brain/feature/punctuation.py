@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """module for a punctuation based tokenizer"""
 
 import re

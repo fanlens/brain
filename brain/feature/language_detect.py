@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Language detection tools for feature extraction"""
 import enum
 import logging

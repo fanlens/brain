@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Transformer to extract fields from multip field samples"""
 from typing import Iterable, Any, Optional, Mapping, Dict, Union
 
